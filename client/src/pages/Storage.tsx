@@ -1,12 +1,13 @@
-import { Trash2 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { ChevronDown, FileVideo, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { DownloadsTabs } from '../components/DownloadsTabs';
+import { TitleTypeIcon } from '../components/TitleTypeIcon';
 import { formatBytes } from '../format';
 import { useCatalog } from '../store';
-import type { StorageFile, StorageSummary, StorageTitle } from '../types';
+import type { StorageFile, StorageSummary, StorageTitle, TitleType } from '../types';
 
 const TOP_ROWS = 10;
 
@@ -91,45 +92,64 @@ type OnDelete = (episodeIds: number[], question: string) => void;
 function StorageReport({ summary, deleting, onDelete }: { summary: StorageSummary; deleting: boolean; onDelete: OnDelete }) {
   const { totalBytes, titles, files } = summary;
 
-  const titleRows = (type: StorageTitle['type']): RankedRow[] =>
+  /** Inside a series the row links to that series and says so, since episode names repeat across series. */
+  const fileRow = (f: StorageFile, detail: string, series?: StorageTitle): RankedRow => ({
+    key: `file-${f.episodeIds[0]}`,
+    name: f.name,
+    link: `?t=${(series ?? f.titles[0]).id}`,
+    detail,
+    bytes: f.bytes,
+    deleteLabel: series ? `Delete the file of ${f.name} in ${series.name}` : `Delete the file of ${f.name}`,
+    disabledReason: null,
+    onDelete: () => onDelete(f.episodeIds, confirmFileDelete(f)),
+  });
+
+  /** Files are already largest first. A file another title shares says so, since deleting it affects both. */
+  const episodeRows = (t: StorageTitle): RankedRow[] =>
+    files
+      .filter((f) => f.titles.some((owner) => owner.id === t.id))
+      .map((f) => {
+        const others = f.titles.filter((owner) => owner.id !== t.id).map((owner) => owner.name);
+        return fileRow(f, others.length ? `Also in ${others.join(', ')}` : '', t);
+      });
+
+  const titleRows = (type: TitleType): RankedRow[] =>
     titles
       .filter((t) => t.type === type)
       .map((t) => ({
         key: `title-${t.id}`,
+        type,
         name: t.name,
         link: `?t=${t.id}`,
         detail: [plural(t.fileCount, 'file'), t.freeableBytes < t.bytes ? `deleting frees ${formatBytes(t.freeableBytes) || '0 B'}` : null]
           .filter(Boolean)
           .join(' · '),
         bytes: t.bytes,
+        deleteLabel: `Delete downloads of ${t.name}`,
         disabledReason: t.freeableBytes === 0 ? 'Other titles use all of these files. Delete them from "Largest files".' : null,
         onDelete: () => onDelete(t.episodeIds, confirmTitleDelete(t)),
+        episodes: type === 'series' ? episodeRows(t) : undefined,
       }));
 
-  const fileRows: RankedRow[] = files.map((f) => ({
-    key: `file-${f.episodeIds[0]}`,
-    name: f.name,
-    link: `?t=${f.titles[0].id}`,
-    detail: f.titles.map((t) => t.name).join(', '),
-    bytes: f.bytes,
-    disabledReason: null,
-    onDelete: () => onDelete(f.episodeIds, confirmFileDelete(f)),
+  const fileRows = files.map((f) => ({
+    ...fileRow(f, f.titles.map((t) => t.name).join(', ')),
+    type: f.titles[0].type,
   }));
 
   return (
     <>
       <Overview summary={summary} />
-      <RankedList heading="Largest series" rows={titleRows('series')} total={totalBytes} deleting={deleting} />
-      <RankedList heading="Largest movies" rows={titleRows('movie')} total={totalBytes} deleting={deleting} />
-      <RankedList heading="Largest files" rows={fileRows} total={totalBytes} deleting={deleting} />
+      <RankedList heading="Largest series" icon={<TitleTypeIcon type="series" size={20} />} rows={titleRows('series')} total={totalBytes} deleting={deleting} />
+      <RankedList heading="Largest movies" icon={<TitleTypeIcon type="movie" size={20} />} rows={titleRows('movie')} total={totalBytes} deleting={deleting} />
+      <RankedList heading="Largest files" icon={<FileVideo aria-hidden size={20} className="shrink-0" />} rows={fileRows} total={totalBytes} deleting={deleting} />
     </>
   );
 }
 
 function Overview({ summary: { totalBytes, fileCount, split } }: { summary: StorageSummary }) {
-  const parts = [
-    { label: 'Series', bytes: split.series, color: 'bg-chart-blue' },
-    { label: 'Movies', bytes: split.movie, color: 'bg-chart-orange' },
+  const parts: { type: TitleType; label: string; bytes: number; color: string }[] = [
+    { type: 'series', label: 'Series', bytes: split.series, color: 'bg-chart-blue' },
+    { type: 'movie', label: 'Movies', bytes: split.movie, color: 'bg-chart-orange' },
   ];
   return (
     <section className="mt-8 rounded bg-flix-panel p-5">
@@ -155,6 +175,7 @@ function Overview({ summary: { totalBytes, fileCount, split } }: { summary: Stor
         {parts.map((p) => (
           <li key={p.label} className="flex items-center gap-2 text-white/70">
             <span aria-hidden className={`h-2.5 w-2.5 rounded-sm ${p.color}`} />
+            <TitleTypeIcon type={p.type} />
             {p.label}
             <span className="font-semibold tabular-nums text-white">{formatBytes(p.bytes) || '0 B'}</span>
             <span className="tabular-nums text-white/50">{formatShare(p.bytes, totalBytes)}</span>
@@ -167,31 +188,76 @@ function Overview({ summary: { totalBytes, fileCount, split } }: { summary: Stor
 
 interface RankedRow {
   key: string;
+  /** Shows the series or movie icon; episodes inside a series leave it out. */
+  type?: TitleType;
   name: string;
   link: string;
   detail: string;
   bytes: number;
+  deleteLabel: string;
   /** Set when deleting would free nothing. */
   disabledReason: string | null;
   onDelete: () => void;
+  /** Largest first. When set, the row expands to list them. */
+  episodes?: RankedRow[];
 }
 
-function RankedList({ heading, rows, total, deleting }: { heading: string; rows: RankedRow[]; total: number; deleting: boolean }) {
+/** Remembered per browser, so a collapsed section stays collapsed when switching tabs. */
+function useSectionOpen(key: string): [boolean, () => void] {
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(key) !== 'closed';
+    } catch {
+      return true;
+    }
+  });
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    try {
+      localStorage.setItem(key, next ? 'open' : 'closed');
+    } catch {
+      // Blocked storage only means the choice isn't remembered.
+    }
+  };
+  return [open, toggle];
+}
+
+function Chevron({ open, size = 20 }: { open: boolean; size?: number }) {
+  return <ChevronDown aria-hidden size={size} className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />;
+}
+
+function RankedList({ heading, icon, rows, total, deleting }: { heading: string; icon: ReactNode; rows: RankedRow[]; total: number; deleting: boolean }) {
   const [showAll, setShowAll] = useState(false);
+  const [open, toggle] = useSectionOpen(`ytf.storage.section.${heading}`);
   if (!rows.length) return null;
   const visible = showAll ? rows : rows.slice(0, TOP_ROWS);
   const largest = rows[0].bytes;
   return (
     <section className="mt-8">
-      <h2 className="mb-2 text-lg font-semibold text-white/80">
-        {heading} <span className="text-white/40">({rows.length})</span>
+      <h2 className="mb-2">
+        <button
+          onClick={toggle}
+          aria-expanded={open}
+          className="flex w-full items-center gap-2 text-left text-lg font-semibold text-white/80 hover:text-white"
+        >
+          {icon}
+          <span>
+            {heading} <span className="text-white/40">({rows.length})</span>
+          </span>
+          <span className="ml-auto">
+            <Chevron open={open} />
+          </span>
+        </button>
       </h2>
-      <ul className="divide-y divide-white/10 rounded bg-flix-panel">
-        {visible.map((row) => (
-          <RankedItem key={row.key} row={row} largest={largest} total={total} deleting={deleting} />
-        ))}
-      </ul>
-      {rows.length > TOP_ROWS && (
+      {open && (
+        <ul className="divide-y divide-white/10 rounded bg-flix-panel">
+          {visible.map((row) => (
+            <RankedItem key={row.key} row={row} largest={largest} total={total} deleting={deleting} />
+          ))}
+        </ul>
+      )}
+      {open && rows.length > TOP_ROWS && (
         <button onClick={() => setShowAll((v) => !v)} className="mt-2 text-sm text-white/60 hover:text-white">
           {showAll ? 'Show fewer' : `Show all ${rows.length}`}
         </button>
@@ -202,33 +268,59 @@ function RankedList({ heading, rows, total, deleting }: { heading: string; rows:
 
 function RankedItem({ row, largest, total, deleting }: { row: RankedRow; largest: number; total: number; deleting: boolean }) {
   const { local } = useAuth();
+  const [expanded, setExpanded] = useState(false);
+  const episodes = row.episodes ?? [];
   const share = formatShare(row.bytes, total);
   const size = formatBytes(row.bytes) || '0 B';
   return (
-    <li className="flex items-center gap-4 p-3 hover:bg-white/5" title={`${size} (${row.bytes.toLocaleString()} bytes), ${share} of the total`}>
-      <div className="min-w-0 flex-1">
-        <Link to={row.link} className="block truncate font-semibold hover:underline">
-          {row.name}
-        </Link>
-        <p className="truncate text-xs text-white/50">{row.detail}</p>
-        <div aria-hidden className="mt-2 h-1.5 overflow-hidden rounded-sm">
-          <div className="h-full rounded-sm bg-chart-blue" style={{ width: `${largest ? (row.bytes / largest) * 100 : 0}%` }} />
+    <li>
+      <div className="flex items-center gap-3 p-3 hover:bg-white/5 sm:gap-4" title={`${size} (${row.bytes.toLocaleString()} bytes), ${share} of the total`}>
+        {episodes.length > 0 && (
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded}
+            aria-label={`${expanded ? 'Hide' : 'Show'} episodes of ${row.name}`}
+            title={`${expanded ? 'Hide' : 'Show'} episodes`}
+            className="-mx-1 shrink-0 rounded p-1 text-white/60 hover:bg-white/10 hover:text-white"
+          >
+            <Chevron open={expanded} />
+          </button>
+        )}
+        <div className="min-w-0 flex-1">
+          <Link to={row.link} className="flex items-center gap-2 font-semibold hover:underline">
+            {row.type && <TitleTypeIcon type={row.type} className="text-white/60" />}
+            <span className="truncate">{row.name}</span>
+          </Link>
+          {row.detail && <p className="truncate text-xs text-white/50">{row.detail}</p>}
+          <div aria-hidden className="mt-2 h-1.5 overflow-hidden rounded-sm">
+            <div className="h-full rounded-sm bg-chart-blue" style={{ width: `${largest ? (row.bytes / largest) * 100 : 0}%` }} />
+          </div>
         </div>
+        <div className="w-20 shrink-0 text-right">
+          <p className="whitespace-nowrap text-lg font-bold tabular-nums">{size}</p>
+          <p className="text-xs tabular-nums text-white/50">{share}</p>
+        </div>
+        {local && (
+          <button
+            onClick={row.onDelete}
+            disabled={deleting || row.disabledReason !== null}
+            title={row.disabledReason ?? row.deleteLabel}
+            aria-label={row.deleteLabel}
+            className="shrink-0 rounded p-2 text-white/60 hover:bg-flix-red/20 hover:text-white disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+          >
+            <Trash2 size={18} />
+          </button>
+        )}
       </div>
-      <div className="w-20 shrink-0 text-right">
-        <p className="whitespace-nowrap text-lg font-bold tabular-nums">{size}</p>
-        <p className="text-xs tabular-nums text-white/50">{share}</p>
-      </div>
-      {local && (
-        <button
-          onClick={row.onDelete}
-          disabled={deleting || row.disabledReason !== null}
-          title={row.disabledReason ?? `Delete downloads of ${row.name}`}
-          aria-label={`Delete downloads of ${row.name}`}
-          className="shrink-0 rounded p-2 text-white/60 hover:bg-flix-red/20 hover:text-white disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
-        >
-          <Trash2 size={18} />
-        </button>
+      {expanded && episodes.length > 0 && (
+        <div className="border-t border-white/10 bg-black/25 pl-4 sm:pl-10">
+          <p className="px-3 pt-2 text-xs font-semibold uppercase tracking-wide text-white/40">Episodes, largest first</p>
+          <ul className="divide-y divide-white/10">
+            {episodes.map((episode) => (
+              <RankedItem key={episode.key} row={episode} largest={episodes[0].bytes} total={total} deleting={deleting} />
+            ))}
+          </ul>
+        </div>
       )}
     </li>
   );

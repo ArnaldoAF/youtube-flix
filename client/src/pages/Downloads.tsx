@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { DownloadControl } from '../components/DownloadControl';
 import { DownloadsTabs } from '../components/DownloadsTabs';
+import { TitleTypeIcon } from '../components/TitleTypeIcon';
 import { formatBytes, formatClock, formatDuration } from '../format';
 import { useCatalog, useLiveDownloads } from '../store';
 import type { DownloadItem, Episode } from '../types';
@@ -101,11 +102,17 @@ function DownloadRow({ item }: { item: DownloadItem }) {
           {item.episodeName}
         </Link>
         {item.titleType === 'series' ? (
-          <Link to={titleLink} className="block truncate text-xs text-white/70 underline-offset-2 hover:text-white hover:underline">
-            {item.titleName} · S{item.seasonNumber}
+          <Link to={titleLink} className="flex items-center gap-1.5 text-xs text-white/70 underline-offset-2 hover:text-white hover:underline">
+            <TitleTypeIcon type="series" size={13} />
+            <span className="truncate">
+              {item.titleName} · S{item.seasonNumber}
+            </span>
           </Link>
         ) : (
-          <p className="truncate text-xs text-white/50">{item.titleName}</p>
+          <p className="flex items-center gap-1.5 text-xs text-white/50">
+            <TitleTypeIcon type="movie" size={13} />
+            <span className="truncate">{item.titleName}</span>
+          </p>
         )}
         <p className={`mt-1 truncate text-xs ${status === 'error' ? 'text-red-300' : 'text-white/60'}`}>{detail}</p>
         {status === 'downloading' && (
