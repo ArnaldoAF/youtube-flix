@@ -5,6 +5,9 @@
   --color-flix-panel: #181818;
   --color-flix-red: #e11d2a;
   --color-flix-red-dark: #b3121e;
+  /* Chart colors, validated for colorblind separation and contrast on flix-panel. */
+  --color-chart-blue: #3987e5;
+  --color-chart-orange: #d95926;
   --font-sans: 'Inter', 'Segoe UI', system-ui, sans-serif;
 }
 

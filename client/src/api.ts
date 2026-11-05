@@ -7,6 +7,7 @@ import type {
   NetworkInfo,
   Preview,
   Settings,
+  StorageSummary,
   SystemInfo,
   TitleDetail,
   TitleSummary,
@@ -72,6 +73,8 @@ export const api = {
   downloadAction: (id: number, action: 'pause' | 'resume' | 'cancel') =>
     send<void>('POST', `/downloads/${id}/${action}`),
   deleteFile: (id: number) => send<void>('DELETE', `/episodes/${id}/file`),
+  storage: () => request<StorageSummary>('/downloads/storage'),
+  deleteFiles: (episodeIds: number[]) => send<void>('DELETE', '/downloads/files', { episodeIds }),
 
   settings: () => request<Settings>('/settings'),
   saveSettings: (patch: Partial<Settings>) => send<Settings>('PUT', '/settings', patch),

@@ -113,6 +113,37 @@ export interface DownloadItem {
   duration: number | null;
 }
 
+export interface StorageTitleRef {
+  id: number;
+  name: string;
+  type: TitleType;
+}
+
+export interface StorageTitle extends StorageTitleRef {
+  fileCount: number;
+  bytes: number;
+  /** What deleting actually frees: files no other title uses. */
+  freeableBytes: number;
+  /** Unfinished downloads that deleting would also cancel. */
+  pendingCount: number;
+  episodeIds: number[];
+}
+
+export interface StorageFile {
+  name: string;
+  bytes: number;
+  episodeIds: number[];
+  titles: StorageTitleRef[];
+}
+
+export interface StorageSummary {
+  totalBytes: number;
+  fileCount: number;
+  split: { series: number; movie: number };
+  titles: StorageTitle[];
+  files: StorageFile[];
+}
+
 export interface Settings {
   mediaDir: string;
   maxHeight: 360 | 480 | 720 | 1080 | 1440 | 2160;

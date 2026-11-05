@@ -128,6 +128,98 @@ export function listDownloads(db: DB): DownloadListItem[] {
   }));
 }
 
+export interface StorageTitleRef {
+  id: number;
+  name: string;
+  type: 'movie' | 'series';
+}
+
+export interface StorageTitle extends StorageTitleRef {
+  fileCount: number;
+  /** Every file this title uses, including ones it shares with other titles. */
+  bytes: number;
+  /** What deleting this title's downloads actually frees: files no other title uses. */
+  freeableBytes: number;
+  /** Unfinished downloads that deleting would also cancel. */
+  pendingCount: number;
+  episodeIds: number[];
+}
+
+export interface StorageFile {
+  name: string;
+  bytes: number;
+  /** Every episode using this file; all of them must go for the file to leave the disk. */
+  episodeIds: number[];
+  titles: StorageTitleRef[];
+}
+
+export interface StorageSummary {
+  totalBytes: number;
+  fileCount: number;
+  split: { series: number; movie: number };
+  titles: StorageTitle[];
+  files: StorageFile[];
+}
+
+const toTitleRef = (r: Row): StorageTitleRef => ({ id: r.title_id, name: r.title_name, type: r.title_type });
+
+const largestFirst = <T extends { bytes: number; name: string }>(items: T[]): T[] =>
+  [...items].sort((a, b) => b.bytes - a.bytes || a.name.localeCompare(b.name));
+
+/** One entry per file on disk. The same video in several titles is one file. */
+function groupFiles(doneRows: Row[]): StorageFile[] {
+  const byPath = new Map<string, Row[]>();
+  doneRows.forEach((r) => byPath.set(r.local_path, [...(byPath.get(r.local_path) ?? []), r]));
+  return [...byPath.values()].map((rows) => ({
+    name: rows[0].name,
+    bytes: rows[0].file_size ?? 0,
+    episodeIds: rows.map((r) => r.id),
+    titles: [...new Map(rows.map((r) => [r.title_id as number, toTitleRef(r)])).values()],
+  }));
+}
+
+function summarizeTitle(ref: StorageTitleRef, rows: Row[], files: StorageFile[]): StorageTitle {
+  const own = files.filter((f) => f.titles.some((t) => t.id === ref.id));
+  const sumBytes = (list: StorageFile[]) => list.reduce((sum, f) => sum + f.bytes, 0);
+  return {
+    ...ref,
+    fileCount: own.length,
+    bytes: sumBytes(own),
+    freeableBytes: sumBytes(own.filter((f) => f.titles.length === 1)),
+    pendingCount: rows.filter((r) => r.download_status !== 'done').length,
+    episodeIds: rows.map((r) => r.id),
+  };
+}
+
+/** What the Storage page shows. Holds no file paths, because other devices can read it. */
+export function storageSummary(db: DB): StorageSummary {
+  const rows = db
+    .prepare(
+      `SELECT e.id, e.name, e.download_status, e.local_path, e.file_size,
+              t.id AS title_id, t.name AS title_name, t.type AS title_type
+       FROM episodes e JOIN seasons s ON s.id = e.season_id JOIN titles t ON t.id = s.title_id
+       WHERE e.download_status <> 'none'
+       ORDER BY t.id, e.id`,
+    )
+    .all() as Row[];
+  const doneRows = rows.filter((r) => r.download_status === 'done' && r.local_path);
+  const files = groupFiles(doneRows);
+  const titleRefs = [...new Map(doneRows.map((r) => [r.title_id as number, toTitleRef(r)])).values()];
+  // Rows are ordered by title, so a file shared across types counts for its oldest title and the split still adds up.
+  const bytesOfType = (type: StorageTitleRef['type']) =>
+    files.filter((f) => f.titles[0].type === type).reduce((sum, f) => sum + f.bytes, 0);
+
+  return {
+    totalBytes: files.reduce((sum, f) => sum + f.bytes, 0),
+    fileCount: files.length,
+    split: { series: bytesOfType('series'), movie: bytesOfType('movie') },
+    titles: largestFirst(
+      titleRefs.map((ref) => summarizeTitle(ref, rows.filter((r) => r.title_id === ref.id), files)),
+    ),
+    files: largestFirst(files),
+  };
+}
+
 export function libraryUsage(db: DB): { files: number; bytes: number } {
   const r = db
     .prepare(

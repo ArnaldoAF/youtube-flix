@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { DownloadControl } from '../components/DownloadControl';
+import { DownloadsTabs } from '../components/DownloadsTabs';
 import { formatBytes, formatClock, formatDuration } from '../format';
 import { useCatalog, useLiveDownloads } from '../store';
 import type { DownloadItem, Episode } from '../types';
@@ -47,7 +48,7 @@ export function Downloads() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 pb-16 pt-24">
-      <h1 className="text-3xl font-black">Downloads</h1>
+      <DownloadsTabs />
       {visible.length === 0 && (
         <p className="mt-6 text-white/60">Nothing downloaded yet. Downloads start automatically when you add a title.</p>
       )}
@@ -74,7 +75,9 @@ export function Downloads() {
 function DownloadRow({ item }: { item: DownloadItem }) {
   const update = useLiveDownloads()[item.episodeId];
   const status = update?.status ?? item.status;
-  const subtitle = item.titleType === 'series' ? `${item.titleName} · S${item.seasonNumber}` : item.titleName;
+  // A relative link opens the title over this page, so closing it comes back here.
+  const titleLink = `?t=${item.titleId}`;
+  const size = status === 'done' ? formatBytes(item.fileSize) : '';
   const detail =
     status === 'downloading' && update
       ? update.stage === 'merging'
@@ -88,16 +91,22 @@ function DownloadRow({ item }: { item: DownloadItem }) {
             .join(' · ')
       : status === 'error'
         ? (update?.error ?? item.error)
-        : [formatDuration(item.duration), formatBytes(item.fileSize)].filter(Boolean).join(' · ');
+        : formatDuration(item.duration);
 
   return (
     <li className="flex items-center gap-4 p-3">
-      {item.thumbnail && <img src={item.thumbnail} alt="" className="aspect-video w-28 shrink-0 rounded object-cover" />}
+      {item.thumbnail && <img src={item.thumbnail} alt="" className="aspect-video w-20 shrink-0 rounded object-cover sm:w-28" />}
       <div className="min-w-0 flex-1">
-        <Link to={`/?t=${item.titleId}`} className="block truncate font-semibold hover:underline">
+        <Link to={titleLink} className="block truncate font-semibold hover:underline">
           {item.episodeName}
         </Link>
-        <p className="truncate text-xs text-white/50">{subtitle}</p>
+        {item.titleType === 'series' ? (
+          <Link to={titleLink} className="block truncate text-xs text-white/70 underline-offset-2 hover:text-white hover:underline">
+            {item.titleName} · S{item.seasonNumber}
+          </Link>
+        ) : (
+          <p className="truncate text-xs text-white/50">{item.titleName}</p>
+        )}
         <p className={`mt-1 truncate text-xs ${status === 'error' ? 'text-red-300' : 'text-white/60'}`}>{detail}</p>
         {status === 'downloading' && (
           <div className="mt-1.5 h-1 overflow-hidden rounded bg-white/15">
@@ -105,7 +114,10 @@ function DownloadRow({ item }: { item: DownloadItem }) {
           </div>
         )}
       </div>
-      <DownloadControl episode={asEpisode(item)} />
+      <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-4">
+        {size && <span className="whitespace-nowrap text-lg font-bold tabular-nums">{size}</span>}
+        <DownloadControl episode={asEpisode(item)} />
+      </div>
     </li>
   );
 }

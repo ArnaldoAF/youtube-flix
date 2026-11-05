@@ -54,7 +54,7 @@ export function Navbar() {
             <li key={l.to}>
               <NavLink
                 to={l.to}
-                end
+                end={l.to !== '/downloads'}
                 className={({ isActive }) => (isActive ? 'font-semibold text-white' : 'text-white/70 hover:text-white/90')}
               >
                 {l.label}

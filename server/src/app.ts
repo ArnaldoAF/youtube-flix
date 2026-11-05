@@ -59,6 +59,10 @@ const downloadSchema = z
   })
   .refine((v) => v.episodeIds || v.titleId || v.seasonId, 'Nothing to download');
 
+const deleteFilesSchema = z.object({
+  episodeIds: z.array(z.number().int().positive()).min(1).max(5000),
+});
+
 export function createApp({ db, fetcher, queue, isLocal = loopbackOnly, onNetworkChange, loginLimiter }: AppDeps) {
   const app = express();
   app.use(markLocality(isLocal));
@@ -162,6 +166,7 @@ function householdRoutes(db: DB, fetcher: Fetcher, queue: DownloadQueue) {
 
   // --- Downloads ---
   api.get('/downloads', (_req, res) => res.json({ items: store.listDownloads(db), live: queue.snapshot() }));
+  api.get('/downloads/storage', (_req, res) => res.json(store.storageSummary(db)));
 
   api.post('/downloads', (req, res) => {
     const { episodeIds, titleId, seasonId } = downloadSchema.parse(req.body);
@@ -216,6 +221,11 @@ function pcOnlyRoutes(db: DB, queue: DownloadQueue, onNetworkChange?: (network: 
 
   api.delete('/episodes/:id/file', (req, res) => {
     queue.deleteFile(idParam(req));
+    res.status(204).end();
+  });
+
+  api.delete('/downloads/files', (req, res) => {
+    deleteFilesSchema.parse(req.body).episodeIds.forEach((id) => queue.deleteFile(id));
     res.status(204).end();
   });
 

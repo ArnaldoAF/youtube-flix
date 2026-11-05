@@ -7,6 +7,7 @@ import { Downloads } from './pages/Downloads';
 import { Home } from './pages/Home';
 import { Search } from './pages/Search';
 import { Settings } from './pages/Settings';
+import { Storage } from './pages/Storage';
 import { Watch } from './pages/Watch';
 
 export function App() {
@@ -27,6 +28,7 @@ export function App() {
           <Route path="/search" element={<Search />} />
           <Route path="/add" element={<AddTitle />} />
           <Route path="/downloads" element={<Downloads />} />
+          <Route path="/downloads/storage" element={<Storage />} />
           <Route path="/settings" element={local ? <Settings /> : <Navigate to="/" replace />} />
           <Route path="/watch/:episodeId" element={<Watch />} />
           <Route path="*" element={<Home />} />
