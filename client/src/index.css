@@ -1,0 +1,44 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-flix-bg: #141414;
+  --color-flix-panel: #181818;
+  --color-flix-red: #e11d2a;
+  --color-flix-red-dark: #b3121e;
+  --font-sans: 'Inter', 'Segoe UI', system-ui, sans-serif;
+}
+
+html,
+body {
+  background: var(--color-flix-bg);
+  color: #fff;
+  color-scheme: dark;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Big play/pause/skip icon that pops in the middle of the player and fades out. */
+@keyframes player-flash {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(0.8);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.4);
+  }
+}
+.player-flash {
+  animation: player-flash 0.6s ease-out forwards;
+}
+
+.hero-fade {
+  background:
+    linear-gradient(77deg, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.35) 45%, transparent 75%),
+    linear-gradient(to top, var(--color-flix-bg) 0%, transparent 30%);
+}
