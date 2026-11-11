@@ -57,6 +57,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         reloadTimer.current = window.setTimeout(() => void reload(), 800);
       }
     };
+    // After a catalog import, episode ids may belong to other episodes: forget every live status.
+    source.addEventListener('catalog', () => {
+      setLive({});
+      void reload();
+    });
     return () => source.close();
   }, [reload]);
 

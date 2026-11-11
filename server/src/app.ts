@@ -16,6 +16,7 @@ import {
 } from './access.js';
 import * as auth from './auth.js';
 import * as repo from './catalog/repo.js';
+import { CATALOG_CHANGED, catalogRoutes } from './catalogRoutes.js';
 import { autoDownloadIds, importSchema, importTitle, preview, refreshTitle } from './catalog/service.js';
 import { CLIENT_DIST, PORT } from './config.js';
 import type { DB } from './db.js';
@@ -190,10 +191,14 @@ function householdRoutes(db: DB, fetcher: Fetcher, queue: DownloadQueue) {
     const send = (data: unknown) => res.write(`data: ${JSON.stringify(data)}\n\n`);
     queue.snapshot().forEach(send);
     queue.on('update', send);
+    // A named event, so pages that only listen for download updates are not confused by it.
+    const catalogChanged = () => res.write('event: catalog\ndata: {}\n\n');
+    queue.on(CATALOG_CHANGED, catalogChanged);
     const heartbeat = setInterval(() => res.write(': ping\n\n'), 25_000);
     req.on('close', () => {
       clearInterval(heartbeat);
       queue.off('update', send);
+      queue.off(CATALOG_CHANGED, catalogChanged);
     });
   });
 
@@ -223,6 +228,8 @@ function pcOnlyRoutes(db: DB, queue: DownloadQueue, onNetworkChange?: (network: 
     queue.deleteFile(idParam(req));
     res.status(204).end();
   });
+
+  api.use(catalogRoutes(db, queue));
 
   api.delete('/downloads/files', (req, res) => {
     deleteFilesSchema.parse(req.body).episodeIds.forEach((id) => queue.deleteFile(id));

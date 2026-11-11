@@ -56,7 +56,32 @@ The PC must be on and youtube-flix running for other devices to connect.
 ## Moving to another computer
 
 The code goes through git. The catalog (titles, seasons, episodes, tags and watch progress) travels as
-one file:
+one file.
+
+### From Settings (easiest)
+
+On the PC, open **Settings → Catalog**:
+
+- **Export catalog** downloads `youtube-flix-catalog-<date>.db`.
+- **Import catalog…** reads such a file and shows what it would change before you confirm:
+    - **Merge** (the default) adds new titles, seasons and episodes, and keeps everything you
+      have. Titles count as the same when they have the same type and YouTube link. The most
+      recently watched position wins.
+    - **Replace** (untick the box) makes the catalog exactly the file's. Downloaded videos stay on
+      disk. Replacing refuses while downloads are running.
+
+Either way this PC keeps its household password, signed-in devices, download folder and network
+settings, and a backup of the current catalog is saved first. To undo an import, quit youtube-flix
+and copy that backup over `data/youtube-flix.db`.
+
+**Only import catalog files you exported yourself.** A deliberately crafted file can make youtube-flix
+stop responding while it reads it, until you close and restart it. Your catalog is not changed when
+that happens. Backups (`data/youtube-flix.db.backup-*`) are never deleted automatically, and each
+one contains the household password hash, so remove old ones you no longer need.
+
+### From the terminal
+
+The terminal import swaps the whole file, so it starts the other computer from scratch:
 
 1. On this PC, run the command below. It's safe while youtube-flix is open. It writes
    `youtube-flix-catalog.db` in the project folder, or pass a path: `npm run export-catalog -- D:\catalog.db`.

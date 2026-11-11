@@ -3,6 +3,8 @@ import type {
   DownloadItem,
   DownloadUpdate,
   EpisodeContext,
+  ImportMode,
+  ImportSummary,
   Me,
   NetworkInfo,
   Preview,
@@ -28,6 +30,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(body?.error ?? `Request failed (${res.status})`);
   }
   return res.status === 204 ? (undefined as T) : res.json();
+}
+
+/** Sends a file as-is (not JSON), for the catalog import. */
+async function upload<T>(path: string, file: File): Promise<T> {
+  const res = await fetch(`/api${path}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file });
+  if (res.status === 401) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.error ?? (res.status === 413 ? 'That file is too large to be a catalog.' : `Request failed (${res.status})`));
+  }
+  return res.json();
 }
 
 const send = <T>(method: string, path: string, body?: unknown) =>
@@ -80,6 +93,10 @@ export const api = {
   saveSettings: (patch: Partial<Settings>) => send<Settings>('PUT', '/settings', patch),
   system: () => request<SystemInfo>('/system'),
   updateYtDlp: () => send<{ output: string }>('POST', '/system/update-ytdlp'),
+
+  catalogExportUrl: '/api/catalog/export',
+  previewCatalogImport: (file: File, mode: ImportMode) => upload<ImportSummary>(`/catalog/inspect?mode=${mode}`, file),
+  importCatalog: (file: File, mode: ImportMode) => upload<ImportSummary>(`/catalog/import?mode=${mode}`, file),
 
   me: () => request<Me>('/auth/me'),
   login: (password: string) => send<void>('POST', '/auth/login', { password }),

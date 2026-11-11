@@ -1,6 +1,7 @@
 import { CheckCircle2, Loader2, XCircle } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../api';
+import { CatalogTransfer } from '../components/CatalogTransfer';
 import { HomeNetwork } from '../components/HomeNetwork';
 import { formatBytes } from '../format';
 import type { Settings as SettingsT, SystemInfo, ToolInfo } from '../types';
@@ -103,6 +104,8 @@ export function Settings() {
       </form>
 
       <HomeNetwork settings={settings} onSaved={setSettings} />
+
+      <CatalogTransfer />
 
       <section className="mt-12">
         <h2 className="mb-3 text-lg font-semibold">System</h2>

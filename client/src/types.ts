@@ -144,6 +144,22 @@ export interface StorageSummary {
   files: StorageFile[];
 }
 
+export type ImportMode = 'merge' | 'replace';
+
+export interface ImportSummary {
+  mode: ImportMode;
+  incoming: { titles: number; episodes: number; withProgress: number };
+  addedTitles: number;
+  updatedTitles: number;
+  addedEpisodes: number;
+  progressUpdated: number;
+  removedTitles: number;
+  relinkedVideos: number;
+  unlinked: { files: number; bytes: number };
+  /** Set once an import has run; null for a preview. */
+  backup: string | null;
+}
+
 export interface Settings {
   mediaDir: string;
   maxHeight: 360 | 480 | 720 | 1080 | 1440 | 2160;

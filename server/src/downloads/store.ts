@@ -82,6 +82,11 @@ export function pathInUse(db: DB, localPath: string, exceptIds: number[] = []): 
   return rows.some((r) => !exceptIds.includes(r.id));
 }
 
+/** Anything downloading or waiting its turn. */
+export function hasActiveDownloads(db: DB): boolean {
+  return Boolean(db.prepare("SELECT 1 FROM episodes WHERE download_status IN ('queued', 'downloading') LIMIT 1").get());
+}
+
 /** After a restart, interrupted downloads go back to the queue. */
 export function requeueInterrupted(db: DB): void {
   db.prepare("UPDATE episodes SET download_status = 'queued' WHERE download_status = 'downloading'").run();

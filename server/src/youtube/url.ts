@@ -9,7 +9,7 @@ const HOSTS = new Set([
   'www.youtube-nocookie.com',
 ]);
 export const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
-const PLAYLIST_ID = /^[A-Za-z0-9_-]{10,64}$/;
+export const PLAYLIST_ID = /^[A-Za-z0-9_-]{10,64}$/;
 
 export interface ParsedUrl {
   videoId: string | null;

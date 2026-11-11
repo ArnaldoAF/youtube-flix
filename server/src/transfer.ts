@@ -5,6 +5,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, renameS
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { openDb, type DB } from './db.js';
+import { PLAYLIST_ID, VIDEO_ID } from './youtube/url.js';
 
 export class CatalogTransferError extends Error {}
 
@@ -27,6 +28,18 @@ const MACHINE_SETTINGS = ['mediaDir', 'network', 'cookiesFromBrowser'];
 const SIDE_SUFFIXES = ['-wal', '-shm', '-journal'];
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+/**
+ * Removes a temp folder without ever throwing. Windows can hold a just-closed file for a moment, and a
+ * cleanup failure must not turn a finished job into an error, or crash the server from a callback.
+ */
+export function removeTempDir(dir: string): void {
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  } catch {
+    // Left for the system's own temp cleanup.
+  }
+}
 
 // --- Telling files apart by what they are, not how they are spelled ---
 
@@ -100,10 +113,59 @@ async function snapshot(source: string, dest: string): Promise<void> {
 }
 
 /** Strips everything that belongs to the old computer, and rewrites the file so deleted data is really gone. */
+/**
+ * A catalog file can come from anywhere, so its own triggers and views must never run here: they
+ * would execute inside this process during the cleaning below. Dropped before any write.
+ */
+function dropExecutableObjects(db: DB): void {
+  const objects = db.prepare("SELECT type, name FROM sqlite_master WHERE type IN ('trigger', 'view')").all() as { type: string; name: string }[];
+  objects.forEach(({ type, name }) => db.exec(`DROP ${type === 'trigger' ? 'TRIGGER' : 'VIEW'} IF EXISTS "${name.replaceAll('"', '""')}"`));
+}
+
+const isWebUrl = (v: unknown) => typeof v === 'string' && /^https?:\/\/\S+$/i.test(v);
+const isTagList = (v: unknown) => {
+  try {
+    const tags = JSON.parse(String(v));
+    return Array.isArray(tags) && tags.every((t) => typeof t === 'string');
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Removes or blanks values the app would trust: video ids become file names, links become clickable
+ * hrefs, numbers feed arithmetic. A title without a web link, an episode without a valid video id and
+ * rows left without a parent are dropped; bad optional values become NULL.
+ */
+function dropUnsafeValues(db: DB): void {
+  const flag = (fn: (v: unknown) => boolean) => (v: unknown) => (fn(v) ? 1 : 0);
+  db.function('is_web_url', { deterministic: true }, flag(isWebUrl));
+  db.function('is_video_id', { deterministic: true }, flag((v) => typeof v === 'string' && VIDEO_ID.test(v)));
+  db.function('is_playlist_id', { deterministic: true }, flag((v) => typeof v === 'string' && PLAYLIST_ID.test(v)));
+  db.function('is_tag_list', { deterministic: true }, flag(isTagList));
+  const isNumber = (col: string) => `typeof(${col}) IN ('integer', 'real')`;
+  db.exec(`
+    DELETE FROM titles WHERE type NOT IN ('movie', 'series') OR NOT is_web_url(source_url);
+    UPDATE titles SET thumbnail = NULL WHERE thumbnail IS NOT NULL AND NOT is_web_url(thumbnail);
+    UPDATE titles SET tags = '[]' WHERE NOT is_tag_list(tags);
+    DELETE FROM seasons WHERE title_id NOT IN (SELECT id FROM titles) OR NOT ${isNumber('number')};
+    UPDATE seasons SET source_url = NULL WHERE source_url IS NOT NULL AND NOT is_web_url(source_url);
+    UPDATE seasons SET playlist_id = NULL WHERE playlist_id IS NOT NULL AND NOT is_playlist_id(playlist_id);
+    DELETE FROM episodes WHERE season_id NOT IN (SELECT id FROM seasons) OR NOT is_video_id(youtube_id);
+    UPDATE episodes SET duration = NULL WHERE duration IS NOT NULL AND NOT ${isNumber('duration')};
+    UPDATE episodes SET position = CAST(position AS INTEGER) WHERE typeof(position) <> 'integer';
+    UPDATE episodes SET thumbnail = NULL WHERE thumbnail IS NOT NULL AND NOT is_web_url(thumbnail);
+    DELETE FROM progress WHERE episode_id NOT IN (SELECT id FROM episodes) OR NOT ${isNumber('seconds')}
+      OR (duration IS NOT NULL AND NOT ${isNumber('duration')});
+  `);
+}
+
 function makePortable(file: string): CatalogCounts {
   const db = openDb(file);
   try {
+    dropExecutableObjects(db);
     db.transaction(() => {
+      dropUnsafeValues(db);
       db.prepare(
         `UPDATE episodes SET download_status = 'none', local_path = NULL, file_size = NULL,
            download_error = NULL, download_queued_at = NULL`,
@@ -131,7 +193,7 @@ async function buildPortable(source: string, tmpRoot: string): Promise<{ file: s
     await snapshot(source, file);
     return { file, dir, counts: makePortable(file) };
   } catch (err) {
-    rmSync(dir, { recursive: true, force: true });
+    removeTempDir(dir);
     throw err;
   }
 }
@@ -143,9 +205,22 @@ function place(built: string, dest: string): void {
     copyFileSync(built, staging);
     renameSync(staging, dest);
   } catch (err) {
-    rmSync(staging, { force: true });
+    try {
+      rmSync(staging, { force: true });
+    } catch {
+      // The original error matters more than a leftover staging file.
+    }
     throw err;
   }
+}
+
+/** A stripped, validated copy of any catalog file, built in `tmpRoot`. The caller removes `dir`. */
+export async function preparePortable(
+  file: string,
+  tmpRoot: string = tmpdir(),
+): Promise<{ file: string; dir: string; counts: CatalogCounts }> {
+  if (!existsSync(file) || !inspect(file)) throw new CatalogTransferError('That file is not a youtube-flix catalog.');
+  return buildPortable(file, tmpRoot);
 }
 
 // --- Export ---
@@ -168,17 +243,17 @@ export async function exportCatalog(source: string, dest: string, { tmpRoot = tm
     SIDE_SUFFIXES.forEach((s) => rmSync(`${dest}${s}`, { force: true }));
     return built.counts;
   } finally {
-    rmSync(built.dir, { recursive: true, force: true });
+    removeTempDir(built.dir);
   }
 }
 
 // --- Import ---
 
 const pad = (n: number) => String(n).padStart(2, '0');
-const stamp = (d: Date) =>
+export const stamp = (d: Date) =>
   `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 
-function freePath(base: string): string {
+export function freePath(base: string): string {
   let candidate = base;
   for (let i = 2; existsSync(candidate); i += 1) candidate = `${base}-${i}`;
   return candidate;
@@ -301,6 +376,6 @@ export async function importCatalog({ file, dbPath, replace = false, now = new D
   } catch (err) {
     throw importFailure(err, { placed, backup });
   } finally {
-    rmSync(built.dir, { recursive: true, force: true });
+    removeTempDir(built.dir);
   }
 }

@@ -25,9 +25,9 @@ async function seedCatalog(file: string, titleName = 'Series A'): Promise<{ epis
   saveSettings(db, { network: 'home' });
   auth.createSession(db);
 
-  const titleId = repo.createTitle(db, { type: 'series', name: titleName, description: 'd', thumbnail: null, channel: 'c', sourceUrl: 'u' });
+  const titleId = repo.createTitle(db, { type: 'series', name: titleName, description: 'd', thumbnail: null, channel: 'c', sourceUrl: 'https://www.youtube.com/playlist?list=PLseriesA' });
   repo.updateTitle(db, titleId, { tags: ['horror'] });
-  const seasonId = repo.createSeason(db, { titleId, number: 1, name: 'Season 1', playlistId: 'PL1', sourceUrl: null });
+  const seasonId = repo.createSeason(db, { titleId, number: 1, name: 'Season 1', playlistId: 'PLseriesA12345', sourceUrl: null });
   const episodeIds = repo.upsertEpisodes(
     db,
     seasonId,
@@ -69,7 +69,7 @@ describe('exportCatalog', () => {
     const db = openDb(dest);
     const [title] = repo.listTitles(db);
     expect(title).toMatchObject({ name: 'Series A', tags: ['horror'], episodeCount: 3, downloadedCount: 0 });
-    expect(repo.getTitle(db, title.id).seasons[0]).toMatchObject({ name: 'Season 1', playlistId: 'PL1' });
+    expect(repo.getTitle(db, title.id).seasons[0]).toMatchObject({ name: 'Season 1', playlistId: 'PLseriesA12345' });
     expect(repo.getEpisode(db, episodeIds[0]).episode.progress?.seconds).toBe(42);
     expect(getSettings(db)).toMatchObject({ maxHeight: 720, concurrency: 2, autoDownload: false });
     db.close();
@@ -131,7 +131,7 @@ describe('exportCatalog', () => {
     const source = path.join(dir, 'youtube-flix.db');
     await seedCatalog(source);
     const running = openDb(source);
-    repo.createTitle(running, { type: 'movie', name: 'Added while running', description: '', thumbnail: null, channel: null, sourceUrl: 'x' });
+    repo.createTitle(running, { type: 'movie', name: 'Added while running', description: '', thumbnail: null, channel: null, sourceUrl: 'https://www.youtube.com/watch?v=xxxxxxxxxxx' });
 
     const counts = await exportCatalog(source, path.join(dir, 'out.db'));
     running.close();
@@ -271,7 +271,7 @@ describe('importCatalog', () => {
     await seedCatalog(dbPath, 'Already here');
     // A change made through the app's own connection, right before it was quit.
     const running = openDb(dbPath);
-    repo.createTitle(running, { type: 'movie', name: 'Added last', description: '', thumbnail: null, channel: null, sourceUrl: 'x' });
+    repo.createTitle(running, { type: 'movie', name: 'Added last', description: '', thumbnail: null, channel: null, sourceUrl: 'https://www.youtube.com/watch?v=xxxxxxxxxxx' });
     running.close();
 
     const { backup } = await importCatalog({ file, dbPath, replace: true });
@@ -354,7 +354,7 @@ describe('importCatalog', () => {
     const dbPath = path.join(dir, 'youtube-flix.db');
     await seedCatalog(dbPath, 'Already here');
     const running = openDb(dbPath);
-    repo.createTitle(running, { type: 'movie', name: 'Added while open', description: '', thumbnail: null, channel: null, sourceUrl: 'x' });
+    repo.createTitle(running, { type: 'movie', name: 'Added while open', description: '', thumbnail: null, channel: null, sourceUrl: 'https://www.youtube.com/watch?v=xxxxxxxxxxx' });
 
     await expect(importCatalog({ file, dbPath, replace: true })).rejects.toThrow(/in use.*Quit youtube-flix/s);
 
