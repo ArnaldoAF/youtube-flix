@@ -53,6 +53,33 @@ The PC must be on and youtube-flix running for other devices to connect.
 - Catalog: `data/youtube-flix.db` (SQLite)
 - Videos: `data/media/<youtubeId>.mp4` (configurable in Settings)
 
+## Moving to another computer
+
+The code goes through git. The catalog (titles, seasons, episodes, tags and watch progress) travels as
+one file:
+
+1. On this PC, run the command below. It's safe while youtube-flix is open. It writes
+   `youtube-flix-catalog.db` in the project folder, or pass a path: `npm run export-catalog -- D:\catalog.db`.
+
+   ```bash
+   npm run export-catalog
+   ```
+
+2. Copy that file to the other computer, set the project up there (`npm install`, `npm run build`),
+   quit youtube-flix if it is running, and import:
+
+   ```bash
+   npm run import-catalog -- D:\catalog.db
+   ```
+
+   If that computer already has titles or a household password, add `--replace`. The previous
+   catalog is kept as `data/youtube-flix.db.backup-<date>-<time>`. Import refuses to run while
+   youtube-flix has the catalog open.
+
+Not included: downloaded videos (episodes play from YouTube until you download them again), the
+household password, and this PC's download folder, home-network and browser-cookie settings.
+Quality, simultaneous downloads and auto-download do carry over.
+
 ## Troubleshooting
 
 - Imports or downloads suddenly fail: Settings → **Update yt-dlp** (YouTube changes things often).

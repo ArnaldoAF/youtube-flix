@@ -8,7 +8,9 @@
     "build": "npm run build -w client",
     "start": "npm run start -w server",
     "test": "npm test -w server",
-    "typecheck": "npm run typecheck -w server && npm run typecheck -w client"
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w client",
+    "export-catalog": "npm run export-catalog -w server --",
+    "import-catalog": "npm run import-catalog -w server --"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

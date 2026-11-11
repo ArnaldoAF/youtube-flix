@@ -3,3 +3,6 @@ dist/
 data/
 server/bin/
 *.log
+
+# Catalog exports for moving to another computer (npm run export-catalog)
+youtube-flix-catalog*
