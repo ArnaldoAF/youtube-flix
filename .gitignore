@@ -4,5 +4,27 @@ data/
 server/bin/
 *.log
 
+# Any database outside data/ (catalog copies, test leftovers) and SQLite's side files
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.backup-*
+
+# Secrets, if any are added later
+.env
+.env.*
+
+# Windows / macOS / editors
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/
+
+# Test and TypeScript output
+coverage/
+*.tsbuildinfo
+
 # Catalog exports for moving to another computer (npm run export-catalog)
 youtube-flix-catalog*
