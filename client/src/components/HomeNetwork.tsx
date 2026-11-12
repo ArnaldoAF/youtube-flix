@@ -57,9 +57,9 @@ export function HomeNetwork({ settings, onSaved }: { settings: Settings; onSaved
   const field = 'w-full rounded border border-white/20 bg-black/60 px-3 py-2 text-sm outline-none focus:border-white/60';
 
   return (
-    <section className="mt-12">
+    <section>
       <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold">
-        <Wifi size={20} /> Home network
+        <Wifi aria-hidden size={20} /> Home network
       </h2>
       <div className="space-y-5 rounded bg-flix-panel p-4 text-sm">
         <p className="text-white/60">

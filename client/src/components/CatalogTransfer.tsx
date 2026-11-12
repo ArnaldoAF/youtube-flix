@@ -1,4 +1,4 @@
-import { Download, FileUp, Loader2 } from 'lucide-react';
+import { Database, Download, FileUp, Loader2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import { formatBytes } from '../format';
@@ -98,8 +98,10 @@ export function CatalogTransfer() {
   const button = 'flex items-center gap-2 rounded bg-white/15 px-4 py-2 text-sm hover:bg-white/25 disabled:opacity-50';
 
   return (
-    <section className="mt-12">
-      <h2 className="mb-1 text-lg font-semibold">Catalog</h2>
+    <section>
+      <h2 className="mb-1 flex items-center gap-2 text-lg font-semibold">
+        <Database aria-hidden size={20} /> Catalog
+      </h2>
       <p className="mb-3 text-sm text-white/60">
         Move your titles and watch progress to another computer. Downloaded videos, the household password and this PC's folders stay here.
       </p>
