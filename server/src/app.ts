@@ -36,6 +36,21 @@ export interface AppDeps {
   /** Called after the response when Settings switches between 'local' and 'home'. */
   onNetworkChange?: (network: 'local' | 'home') => void;
   loginLimiter?: auth.LoginLimiter;
+  /**
+   * Set in dev mode (`npm run dev`): the pages come from Vite at this address, so this server
+   * answers only /api and points anything else there instead of serving an old build.
+   */
+  devUiUrl?: string;
+}
+
+const escapeHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
+
+function devPointer(url: string): string {
+  const safe = escapeHtml(url);
+  return `<!doctype html><meta charset="utf-8"><title>youtube-flix dev server</title>
+<body style="font-family:system-ui,sans-serif;background:#141414;color:#fff;padding:2rem">
+<p>This is the youtube-flix dev server. It only answers data requests.</p>
+<p>Open the app at <a style="color:#e11d2a" href="${safe}">${safe}</a>.</p></body>`;
 }
 
 type Handler = (req: Request, res: Response) => unknown;
@@ -64,7 +79,7 @@ const deleteFilesSchema = z.object({
   episodeIds: z.array(z.number().int().positive()).min(1).max(5000),
 });
 
-export function createApp({ db, fetcher, queue, isLocal = loopbackOnly, onNetworkChange, loginLimiter }: AppDeps) {
+export function createApp({ db, fetcher, queue, isLocal = loopbackOnly, onNetworkChange, loginLimiter, devUiUrl }: AppDeps) {
   const app = express();
   app.use(markLocality(isLocal));
   app.use(hostGuard());
@@ -82,7 +97,11 @@ export function createApp({ db, fetcher, queue, isLocal = loopbackOnly, onNetwor
   app.use('/api', api);
   app.use('/api', (_req, _res, next) => next(new NotFoundError('Endpoint')));
 
-  if (existsSync(CLIENT_DIST) && statSync(CLIENT_DIST).isDirectory()) {
+  if (devUiUrl) {
+    app.use((req, res, next) =>
+      req.method === 'GET' || req.method === 'HEAD' ? res.status(404).type('html').send(devPointer(devUiUrl)) : next(),
+    );
+  } else if (existsSync(CLIENT_DIST) && statSync(CLIENT_DIST).isDirectory()) {
     app.use(express.static(CLIENT_DIST));
     app.get('*', (_req, res) => res.sendFile(path.join(CLIENT_DIST, 'index.html')));
   }

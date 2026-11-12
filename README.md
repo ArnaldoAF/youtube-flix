@@ -18,7 +18,21 @@ npm start          # http://127.0.0.1:4000
 
 Or double-click `youtube-flix.bat`, which builds if needed, starts the server and opens the browser.
 
-Development with hot reload: `npm run dev` (UI on http://127.0.0.1:5173, API on :4000).
+Development with hot reload: `npm run dev`. It can run at the same time as the regular app:
+
+| What | Address |
+|---|---|
+| Regular app (`npm start` or `youtube-flix.bat`) | http://127.0.0.1:4000 |
+| Dev UI with hot reload (`npm run dev`) | http://127.0.0.1:6480 |
+| Dev API, started by `npm run dev` | port 6481 |
+| Preview of the built UI (`npm run preview -w client`) | http://127.0.0.1:6482, using the regular app's API on 4000 |
+
+The dev ports live in `dev-ports.json`. If one is already taken, startup stops with an error rather
+than moving to another port.
+
+Dev and the regular app share the same library (`data/`). When both run, avoid adding titles,
+downloading or deleting in both at once: each one runs its own download queue, so the same video could
+download twice and the two could clash over the same file.
 
 ## Adding titles
 

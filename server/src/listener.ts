@@ -1,7 +1,16 @@
 import type { Server } from 'node:http';
 import type { Express } from 'express';
+import { HOST } from './config.js';
 
 export type Network = 'local' | 'home';
+
+/**
+ * Where the server listens. Home-network access needs a password, and dev mode never leaves this PC:
+ * it is a second copy of the app that nobody else needs to reach.
+ */
+export function listenHost({ network, hasPassword, dev }: { network: Network; hasPassword: boolean; dev: boolean }): string {
+  return network === 'home' && hasPassword && !dev ? '0.0.0.0' : HOST;
+}
 
 export interface Listener {
   start(network: Network): Promise<string>;
