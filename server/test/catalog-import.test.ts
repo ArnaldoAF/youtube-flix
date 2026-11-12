@@ -554,13 +554,15 @@ describe('routes', () => {
     expect(received).not.toContain('event: catalog');
 
     await upload('/api/catalog/import?mode=merge', file);
-    await new Promise((r) => setTimeout(r, 300));
+    // Wait for it rather than for a fixed time: on a busy machine the stream can lag behind the response.
+    const deadline = Date.now() + 20_000;
+    while (!received.includes('event: catalog') && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
     expect(received).toContain('event: catalog');
 
     await reader.cancel();
     controller.abort();
     await collect;
-  }, 30_000);
+  });
 
   it('rejects a cross-site import', async () => {
     const file = await makeImportFile((db) => addTitle(db, { name: 'New', source: 'n', seasons: { 1: ['bbbbbbbbbbb'] } }));
