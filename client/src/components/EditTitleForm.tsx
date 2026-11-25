@@ -41,7 +41,7 @@ export function EditTitleForm({ title, onDone }: { title: TitleDetail; onDone: (
         <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={5} className={field} />
       </label>
       <div className="text-sm">
-        <span className="mb-1 block text-white/60">Tags (each tag becomes a row on Home)</span>
+        <span className="mb-1 block text-white/60">Genres (each genre becomes a row on Home, a filter and a source of recommendations)</span>
         <TagInput value={tags} onChange={setTags} suggestions={knownTags} />
       </div>
       {error && <p className="text-sm text-red-300">{error}</p>}

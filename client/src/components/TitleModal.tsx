@@ -1,18 +1,21 @@
-import { Download, Pencil, Play, RefreshCw, Star, Trash2, X } from 'lucide-react';
+import { Download, Pencil, Play, RefreshCw, Sparkles, Star, Trash2, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
+import { recommend } from '../browse';
 import { fallbackToHq, formatBytes, formatDuration, heroImage, progressPercent } from '../format';
 import { useCatalog } from '../store';
 import type { Episode, TitleDetail } from '../types';
+import { ChannelLink } from './ChannelLink';
 import { DownloadControl } from './DownloadControl';
 import { EditTitleForm } from './EditTitleForm';
+import { TitleCard } from './TitleCard';
 
 export function TitleModal({ id }: { id: number }) {
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
-  const { version, reload } = useCatalog();
+  const { version, reload, titles } = useCatalog();
   const { local } = useAuth();
   const [title, setTitle] = useState<TitleDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -72,6 +75,7 @@ export function TitleModal({ id }: { id: number }) {
   const season = title?.seasons.find((s) => s.id === seasonId) ?? title?.seasons[0];
   const isSeries = title?.type === 'series';
   const allEpisodes = title?.seasons.flatMap((s) => s.episodes) ?? [];
+  const recommended = title ? recommend(title, titles) : [];
   const sizeOnDisk = allEpisodes.reduce((sum, e) => sum + (e.hasLocalFile ? (e.fileSize ?? 0) : 0), 0);
 
   return (
@@ -165,8 +169,12 @@ export function TitleModal({ id }: { id: number }) {
                     </p>
                   </div>
                   <div className="space-y-2 text-sm">
-                    {title.channel && <Meta label="Channel" value={title.channel} />}
-                    {title.tags.length > 0 && <Meta label="Tags" value={title.tags.join(', ')} />}
+                    {title.channel && (
+                      <Meta label="Channel">
+                        <ChannelLink channel={title.channel} />
+                      </Meta>
+                    )}
+                    {title.tags.length > 0 && <Meta label="Genres">{title.tags.join(', ')}</Meta>}
                     <a href={title.sourceUrl} target="_blank" rel="noreferrer" className="block text-white/50 hover:text-white">
                       Open on YouTube ↗
                     </a>
@@ -206,6 +214,21 @@ export function TitleModal({ id }: { id: number }) {
                   <DownloadControl episode={allEpisodes[0]} />
                 </div>
               )}
+
+              {recommended.length > 0 && (
+                <section className="mt-10">
+                  <h3 className="mb-1 flex items-center gap-2 text-xl font-bold">
+                    <Sparkles size={20} aria-hidden /> Recommended
+                  </h3>
+                  <p className="mb-4 text-sm text-white/50">Same genre or same channel</p>
+                  {/* Bottom padding leaves room for the hover card under the last line. */}
+                  <div className="grid grid-cols-2 gap-x-2 gap-y-14 pb-14 sm:grid-cols-3 md:grid-cols-4">
+                    {recommended.map((t) => (
+                      <TitleCard key={t.id} title={t} wide />
+                    ))}
+                  </div>
+                </section>
+              )}
             </div>
           </>
         )}
@@ -227,11 +250,11 @@ function IconAction({ label, onClick, children }: { label: string; onClick: () =
   );
 }
 
-function Meta({ label, value }: { label: string; value: string }) {
+function Meta({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <p>
       <span className="text-white/50">{label}: </span>
-      {value}
+      {children}
     </p>
   );
 }

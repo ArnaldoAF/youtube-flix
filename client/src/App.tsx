@@ -3,6 +3,7 @@ import { useAuth } from './auth';
 import { Navbar } from './components/Navbar';
 import { TitleModal } from './components/TitleModal';
 import { AddTitle } from './pages/AddTitle';
+import { Channel } from './pages/Channel';
 import { Downloads } from './pages/Downloads';
 import { Home } from './pages/Home';
 import { Search } from './pages/Search';
@@ -26,6 +27,7 @@ export function App() {
           <Route path="/series" element={<Home filter="series" />} />
           <Route path="/movies" element={<Home filter="movie" />} />
           <Route path="/search" element={<Search />} />
+          <Route path="/channel/:name" element={<Channel />} />
           <Route path="/add" element={<AddTitle />} />
           <Route path="/downloads" element={<Downloads />} />
           <Route path="/downloads/storage" element={<Storage />} />

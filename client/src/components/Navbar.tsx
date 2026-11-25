@@ -82,7 +82,7 @@ export function Navbar() {
                   value={query}
                   onChange={(e) => onSearch(e.target.value)}
                   onBlur={() => !query && setSearchOpen(false)}
-                  placeholder="Titles, channels, tags"
+                  placeholder="Titles, channels, genres"
                   className="w-40 bg-transparent pr-2 text-sm outline-none placeholder:text-white/50 md:w-56"
                 />
                 {query && (

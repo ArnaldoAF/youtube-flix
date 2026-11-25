@@ -1,79 +1,159 @@
-import { Link } from 'react-router-dom';
-import { Hero } from '../components/Hero';
+import { useMemo } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { byName, genresOf, GRID, pickHeroes, useViewMode, type ViewMode } from '../browse';
+import { BrowseToolbar, ViewToggle, type FilterOptions } from '../components/BrowseToolbar';
+import { HeroCarousel } from '../components/Hero';
 import { Row } from '../components/Row';
 import { ContinueCard, TitleCard } from '../components/TitleCard';
 import { useCatalog } from '../store';
 import type { TitleSummary } from '../types';
 
-/** Featured titles win; otherwise pick one per day so the hero doesn't change on every render. */
-function pickHero(titles: TitleSummary[]): TitleSummary | null {
-  const pool = titles.filter((t) => t.featured).length ? titles.filter((t) => t.featured) : titles;
-  if (!pool.length) return null;
-  const day = Math.floor(Date.now() / 86_400_000);
-  return pool[day % pool.length];
-}
+const unique = (values: (string | null)[]) =>
+  [...new Set(values.filter((v): v is string => Boolean(v)))].sort((a, b) => a.localeCompare(b));
 
 export function Home({ filter }: { filter?: 'movie' | 'series' }) {
   const { titles: all, continueItems, loading, error } = useCatalog();
-  const titles = filter ? all.filter((t) => t.type === filter) : all;
-  const hero = pickHero(titles);
+  const [params, setParams] = useSearchParams();
+  const [view, setView] = useViewMode();
+  const titles = useMemo(() => (filter ? all.filter((t) => t.type === filter) : all), [all, filter]);
+
+  // Drawn again only when the set of titles changes, so a finished download doesn't reshuffle the hero.
+  const idKey = titles.map((t) => t.id).sort((a, b) => a - b).join(',');
+  const heroIds = useMemo(() => pickHeroes(titles).map((t) => t.id), [idKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const heroes = heroIds.map((id) => titles.find((t) => t.id === id)).filter((t): t is TitleSummary => Boolean(t));
 
   if (loading) return <div className="pt-40 text-center text-white/50">Loading…</div>;
   if (error) return <div className="pt-40 text-center text-red-300">Could not reach the server: {error}</div>;
-  if (!hero) return <EmptyState filter={filter} />;
+  if (!titles.length) return <EmptyState filter={filter} />;
 
-  const tags = [...new Set(titles.flatMap((t) => t.tags))].sort((a, b) => a.localeCompare(b));
-  const continueRow = continueItems.filter((c) => !filter || c.title.type === filter);
-  const downloaded = titles.filter((t) => t.downloadedCount > 0 && t.downloadedCount === t.episodeCount);
+  const genre = params.get('genre') ?? '';
+  const channel = params.get('channel') ?? '';
+  const filters: FilterOptions | undefined = filter
+    ? {
+        genre,
+        channel,
+        // A value from the address that no title has (an old link) stays listed, so the select never
+        // claims "All" while a filter is still applied.
+        genres: unique([...titles.flatMap(genresOf), genre]),
+        channels: unique([...titles.map((t) => t.channel), channel]),
+        onChange: (change) => {
+          const next = new URLSearchParams(params);
+          Object.entries(change).forEach(([key, value]) => (value ? next.set(key, value) : next.delete(key)));
+          setParams(next, { replace: true });
+        },
+      }
+    : undefined;
+
+  if (filters && (genre || channel)) {
+    return (
+      <div className="relative min-h-screen">
+        <BrowseToolbar filters={filters} />
+        <FilteredGrid titles={titles} genre={genre} channel={channel} kind={filter === 'series' ? 'series' : 'movies'} onClear={() => filters.onChange({ genre: '', channel: '' })} />
+      </div>
+    );
+  }
 
   return (
-    <div className="pb-16">
-      <Hero title={hero} />
-      <div className="relative z-10 -mt-[8vw]">
-        {continueRow.length > 0 && (
-          <Row title="Continue watching">
-            {continueRow.map((c) => (
-              <ContinueCard key={c.title.id} item={c} />
-            ))}
-          </Row>
-        )}
-        <Row title="Recently added">
-          {titles.slice(0, 20).map((t) => (
-            <TitleCard key={t.id} title={t} />
-          ))}
-        </Row>
-        {!filter && <TypeRow titles={titles} type="series" label="Series" />}
-        {!filter && <TypeRow titles={titles} type="movie" label="Movies" />}
-        {tags.map((tag) => (
-          <Row key={tag} title={tag}>
-            {titles
-              .filter((t) => t.tags.includes(tag))
-              .map((t) => (
-                <TitleCard key={t.id} title={t} />
-              ))}
-          </Row>
-        ))}
-        {downloaded.length > 0 && (
-          <Row title="Available offline">
-            {downloaded.map((t) => (
-              <TitleCard key={t.id} title={t} />
-            ))}
-          </Row>
-        )}
+    <div className="relative pb-16">
+      {filters && <BrowseToolbar filters={filters} />}
+      <HeroCarousel titles={heroes} />
+      {/* Below the banner, never on it: the rows start after this line at every window width. */}
+      <div className="mt-8 flex justify-end px-4 md:px-12">
+        <ViewToggle view={view} onView={setView} />
       </div>
+      <HomeRows titles={titles} continueItems={continueItems.filter((c) => !filter || c.title.type === filter)} filter={filter} view={view} />
     </div>
   );
 }
 
-function TypeRow({ titles, type, label }: { titles: TitleSummary[]; type: 'movie' | 'series'; label: string }) {
-  const items = titles.filter((t) => t.type === type).sort((a, b) => a.name.localeCompare(b.name));
-  if (!items.length) return null;
+function HomeRows({
+  titles,
+  continueItems,
+  filter,
+  view,
+}: {
+  titles: TitleSummary[];
+  continueItems: ReturnType<typeof useCatalog>['continueItems'];
+  filter?: 'movie' | 'series';
+  view: ViewMode;
+}) {
+  const grid = view === 'grid';
+  const card = (t: TitleSummary) => <TitleCard key={t.id} title={t} wide={grid} />;
+  const genres = unique(titles.flatMap(genresOf));
+  const downloaded = titles.filter((t) => t.downloadedCount > 0 && t.downloadedCount === t.episodeCount);
+  const ofType = (type: 'movie' | 'series') => titles.filter((t) => t.type === type).sort(byName);
+
   return (
-    <Row title={label}>
-      {items.map((t) => (
-        <TitleCard key={t.id} title={t} />
+    <div className="relative z-10">
+      {continueItems.length > 0 && (
+        <Row title="Continue watching" layout={view}>
+          {continueItems.map((c) => (
+            <ContinueCard key={c.title.id} item={c} wide={grid} />
+          ))}
+        </Row>
+      )}
+      <Row title="Recently added" layout={view}>
+        {titles.slice(0, 20).map(card)}
+      </Row>
+      {!filter && ofType('series').length > 0 && (
+        <Row title="Series" layout={view}>
+          {ofType('series').map(card)}
+        </Row>
+      )}
+      {!filter && ofType('movie').length > 0 && (
+        <Row title="Movies" layout={view}>
+          {ofType('movie').map(card)}
+        </Row>
+      )}
+      {genres.map((g) => (
+        <Row key={g} title={g} layout={view}>
+          {titles.filter((t) => genresOf(t).includes(g)).map(card)}
+        </Row>
       ))}
-    </Row>
+      {downloaded.length > 0 && (
+        <Row title="Available offline" layout={view}>
+          {downloaded.map(card)}
+        </Row>
+      )}
+    </div>
+  );
+}
+
+function FilteredGrid({
+  titles,
+  genre,
+  channel,
+  kind,
+  onClear,
+}: {
+  titles: TitleSummary[];
+  genre: string;
+  channel: string;
+  kind: 'series' | 'movies';
+  onClear: () => void;
+}) {
+  const results = titles.filter((t) => (!genre || genresOf(t).includes(genre)) && (!channel || t.channel === channel)).sort(byName);
+  const label = [genre && `genre “${genre}”`, channel && `channel “${channel}”`].filter(Boolean).join(' and ');
+  return (
+    <div className="px-4 pb-16 pt-32 md:px-12">
+      <h1 className="mb-6 text-lg text-white/60">
+        {results.length} {kind === 'movies' && results.length === 1 ? 'movie' : kind} with {label}
+        <button onClick={onClear} className="ml-3 text-sm text-white/80 underline-offset-2 hover:text-white hover:underline">
+          Clear filters
+        </button>
+      </h1>
+      {results.length ? (
+        <div className={GRID}>
+          {results.map((t) => (
+            <TitleCard key={t.id} title={t} wide />
+          ))}
+        </div>
+      ) : (
+        <p className="text-white/60">
+          {genre && channel ? 'Nothing matches both filters.' : 'Nothing matches this filter.'} Try another genre or channel.
+        </p>
+      )}
+    </div>
   );
 }
 

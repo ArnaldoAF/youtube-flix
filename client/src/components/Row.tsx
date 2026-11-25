@@ -1,12 +1,23 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useRef, type ReactNode } from 'react';
+import { GRID, type ViewMode } from '../browse';
 
-export function Row({ title, children }: { title: string; children: ReactNode }) {
+export function Row({ title, children, layout = 'carousel' }: { title: string; children: ReactNode; layout?: ViewMode }) {
   const scroller = useRef<HTMLDivElement>(null);
   const scroll = (dir: 1 | -1) => {
     const el = scroller.current;
     if (el) el.scrollBy({ left: dir * el.clientWidth * 0.85, behavior: 'smooth' });
   };
+
+  if (layout === 'grid') {
+    return (
+      <section className="my-6">
+        <h2 className="mb-3 px-4 text-lg font-semibold text-white/90 md:px-12 md:text-xl">{title}</h2>
+        {/* Bottom padding leaves room for the hover card under the last line. */}
+        <div className={`${GRID} px-4 pb-14 md:px-12`}>{children}</div>
+      </section>
+    );
+  }
 
   return (
     <section className="group/row relative my-6">

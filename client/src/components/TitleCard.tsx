@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { formatDuration } from '../format';
+import { ChannelLink } from './ChannelLink';
 import type { ContinueItem, TitleSummary } from '../types';
 
 function useOpenTitle() {
@@ -26,7 +27,7 @@ function CardShell({
 }: {
   image: string | null;
   name: string;
-  meta: string;
+  meta: ReactNode;
   progress?: number;
   badge?: ReactNode;
   onPlay: () => void;
@@ -85,12 +86,29 @@ function CardShell({
   );
 }
 
-export function titleMeta(t: TitleSummary): string {
+/** Seasons and episodes, or length and parts: everything about a title except its channel. */
+export function titleFacts(t: TitleSummary): string {
   const parts =
     t.type === 'series'
       ? [`${t.seasonCount} season${t.seasonCount === 1 ? '' : 's'}`, `${t.episodeCount} ep.`]
       : [formatDuration(t.totalDuration), t.episodeCount > 1 ? `${t.episodeCount} parts` : null];
-  return [...parts, t.channel].filter(Boolean).join(' · ');
+  return parts.filter(Boolean).join(' · ');
+}
+
+export function titleMeta(t: TitleSummary): string {
+  return [titleFacts(t), t.channel].filter(Boolean).join(' · ');
+}
+
+/** The same line, with the channel as a link to its page. */
+export function TitleMetaLine({ title }: { title: TitleSummary }) {
+  const facts = titleFacts(title);
+  return (
+    <>
+      {facts}
+      {facts && title.channel ? ' · ' : null}
+      {title.channel && <ChannelLink channel={title.channel} />}
+    </>
+  );
 }
 
 export function TitleCard({ title, wide }: { title: TitleSummary; wide?: boolean }) {
@@ -102,7 +120,7 @@ export function TitleCard({ title, wide }: { title: TitleSummary; wide?: boolean
       wide={wide}
       image={title.thumbnail}
       name={title.name}
-      meta={titleMeta(title)}
+      meta={<TitleMetaLine title={title} />}
       badge={downloaded ? <CheckCircle2 size={18} className="text-emerald-400 drop-shadow" aria-label="Downloaded" /> : null}
       onOpen={() => open(title.id)}
       onPlay={async () => navigate(`/watch/${(await api.playTarget(title.id)).episodeId}`)}
@@ -110,7 +128,7 @@ export function TitleCard({ title, wide }: { title: TitleSummary; wide?: boolean
   );
 }
 
-export function ContinueCard({ item }: { item: ContinueItem }) {
+export function ContinueCard({ item, wide }: { item: ContinueItem; wide?: boolean }) {
   const open = useOpenTitle();
   const navigate = useNavigate();
   const { episode, title } = item;
@@ -119,6 +137,7 @@ export function ContinueCard({ item }: { item: ContinueItem }) {
   const progress = episode.progress && duration ? (episode.progress.seconds / duration) * 100 : 0;
   return (
     <CardShell
+      wide={wide}
       image={episode.thumbnail ?? title.thumbnail}
       name={title.type === 'series' ? title.name : label}
       meta={title.type === 'series' ? label : formatDuration(duration)}
