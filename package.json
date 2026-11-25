@@ -1,7 +1,7 @@
 {
   "name": "youtube-flix",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "workspaces": ["server", "client"],
   "scripts": {
     "dev": "concurrently -n server,client -c red,cyan \"npm run dev -w server\" \"npm run dev -w client\"",
