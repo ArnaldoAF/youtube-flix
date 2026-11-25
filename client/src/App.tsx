@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes, useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from './auth';
+import { Footer } from './components/Footer';
 import { Navbar } from './components/Navbar';
 import { TitleModal } from './components/TitleModal';
 import { AddTitle } from './pages/AddTitle';
@@ -38,6 +39,7 @@ export function App() {
           <Route path="*" element={<Home />} />
         </Routes>
       </main>
+      {!isWatching && <Footer />}
       {openTitle && !isWatching && <TitleModal key={openTitle} id={openTitle} />}
     </>
   );
