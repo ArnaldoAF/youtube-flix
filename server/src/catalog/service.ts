@@ -162,8 +162,11 @@ export async function refreshTitle(db: DB, fetcher: Fetcher, titleId: number): P
       const seasons = byPlaylist.get(playlistId) ?? [];
       const seasonOf = new Map(seasons.flatMap((s) => s.episodes.map((e) => [e.youtubeId, s.id] as const)));
       const assigned = new Map<number, VideoMeta[]>(seasons.map((s) => [s.id, []]));
+      // A video removed from any season of this playlist stays out: it has no episode left to say
+      // which season it was in, so it would otherwise land in another one.
+      const removed = new Set(seasons.flatMap((s) => s.removed.map((r) => r.youtubeId)));
 
-      playlist.entries.forEach((entry) => {
+      playlist.entries.filter((entry) => !removed.has(entry.youtubeId)).forEach((entry) => {
         const seasonId = seasonOf.get(entry.youtubeId) ?? targetSeason(db, title, seasons, entry, playlistId);
         assigned.set(seasonId, [...(assigned.get(seasonId) ?? []), entry]);
       });
@@ -193,6 +196,6 @@ function targetSeason(
     playlistId,
     sourceUrl: playlistUrl(playlistId),
   });
-  seasons.push({ id, number: detected, name: '', playlistId, episodes: [] });
+  seasons.push({ id, number: detected, name: '', playlistId, orderMode: 'playlist', removed: [], episodes: [] });
   return id;
 }

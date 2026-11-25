@@ -10,6 +10,8 @@ export const genresOf = (t: Pick<TitleSummary, 'tags'>): string[] => t.tags;
 
 export const channelPath = (channel: string) => `/channel/${encodeURIComponent(channel)}`;
 
+export const genrePath = (genre: string) => `/genre/${encodeURIComponent(genre)}`;
+
 export const byName = (a: TitleSummary, b: TitleSummary) => a.name.localeCompare(b.name);
 
 function shuffle<T>(items: T[], random: () => number): T[] {

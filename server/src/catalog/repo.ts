@@ -1,6 +1,7 @@
 import type { DB } from '../db.js';
 import { NotFoundError } from '../errors.js';
 import { collectionOf, collectionRefs, nextMovie, pruneCollections, type CollectionRef } from './collections.js';
+import { removedVideos, type OrderMode } from './episodes.js';
 import type { VideoMeta } from '../youtube/mapper.js';
 
 export type TitleType = 'movie' | 'series';
@@ -33,6 +34,9 @@ export interface Season {
   number: number;
   name: string;
   playlistId: string | null;
+  orderMode: OrderMode;
+  /** Videos the user removed; a playlist check does not add them back. */
+  removed: { youtubeId: string; name: string }[];
   episodes: Episode[];
 }
 
@@ -147,7 +151,7 @@ export function getTitle(db: DB, id: number): TitleDetail {
   const seasons = db.prepare('SELECT * FROM seasons WHERE title_id = ? ORDER BY number').all(id) as Row[];
   const episodes = (
     db
-      .prepare(`${EPISODE_SELECT} JOIN seasons s ON s.id = e.season_id WHERE s.title_id = ? ORDER BY e.position`)
+      .prepare(`${EPISODE_SELECT} JOIN seasons s ON s.id = e.season_id WHERE s.title_id = ? ORDER BY e.position, e.id`)
       .all(id) as Row[]
   ).map(toEpisode);
   return {
@@ -158,6 +162,8 @@ export function getTitle(db: DB, id: number): TitleDetail {
       number: s.number,
       name: s.name,
       playlistId: s.playlist_id,
+      orderMode: s.order_mode,
+      removed: removedVideos(db, s.id),
       episodes: episodes.filter((e) => e.seasonId === s.id),
     })),
   };
@@ -224,27 +230,45 @@ export function seasonsOf(db: DB, titleId: number): Row[] {
   return db.prepare('SELECT * FROM seasons WHERE title_id = ? ORDER BY number').all(titleId) as Row[];
 }
 
-/** Inserts new episodes and refreshes metadata/order of existing ones. Returns the new episode ids. */
+/**
+ * Inserts new episodes and refreshes the metadata of existing ones. Returns the new episode ids.
+ * Follows the season's order mode, skips videos the user removed, and keeps names and descriptions
+ * the user edited.
+ */
 export function upsertEpisodes(db: DB, seasonId: number, metas: VideoMeta[]): number[] {
+  const season = db.prepare('SELECT order_mode FROM seasons WHERE id = ?').get(seasonId) as { order_mode: OrderMode } | undefined;
+  const mode = season?.order_mode ?? 'playlist';
   const existing = new Set(
     (db.prepare('SELECT youtube_id FROM episodes WHERE season_id = ?').all(seasonId) as Row[]).map(
       (r) => r.youtube_id,
     ),
   );
+  const removed = new Set(removedVideos(db, seasonId).map((r) => r.youtubeId));
+  const kept = metas.filter((m) => !removed.has(m.youtubeId));
+  const { last } = db.prepare('SELECT COALESCE(MAX(position), 0) AS last FROM episodes WHERE season_id = ?').get(seasonId) as Row;
+  let appended = 0;
+  const positionOf = (m: VideoMeta, i: number): { position: number; keep: number } => {
+    if (mode === 'reversed') return { position: kept.length - i, keep: 0 };
+    if (mode === 'manual') return existing.has(m.youtubeId) ? { position: 0, keep: 1 } : { position: last + ++appended, keep: 0 };
+    return { position: i + 1, keep: 0 };
+  };
+
   const upsert = db.prepare(
     `INSERT INTO episodes (season_id, youtube_id, name, description, duration, thumbnail, position, upload_date)
      VALUES (@seasonId, @youtubeId, @title, @description, @duration, @thumbnail, @position, @uploadDate)
      ON CONFLICT (season_id, youtube_id) DO UPDATE SET
-       name = excluded.name,
-       description = CASE WHEN excluded.description <> '' THEN excluded.description ELSE episodes.description END,
+       name = CASE WHEN episodes.edited = 1 THEN episodes.name ELSE excluded.name END,
+       description = CASE
+         WHEN episodes.edited = 1 OR excluded.description = '' THEN episodes.description
+         ELSE excluded.description END,
        duration = COALESCE(excluded.duration, episodes.duration),
        thumbnail = excluded.thumbnail,
-       position = excluded.position,
+       position = CASE WHEN @keep = 1 THEN episodes.position ELSE excluded.position END,
        upload_date = COALESCE(excluded.upload_date, episodes.upload_date)
      RETURNING id`,
   );
-  return metas.flatMap((m, i) => {
-    const { id } = upsert.get({ ...m, seasonId, position: i + 1 }) as Row;
+  return kept.flatMap((m, i) => {
+    const { id } = upsert.get({ ...m, seasonId, ...positionOf(m, i) }) as Row;
     return existing.has(m.youtubeId) ? [] : [id as number];
   });
 }

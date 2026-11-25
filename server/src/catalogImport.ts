@@ -50,8 +50,8 @@ type Changes = Omit<ImportSummary, 'mode' | 'incoming' | 'backup'>;
 const PORTABLE_SETTINGS = ['maxHeight', 'concurrency', 'autoDownload'];
 
 const TITLE_COLS = 'type, name, description, thumbnail, channel, source_url, tags, featured, added_at, updated_at';
-const SEASON_COLS = 'title_id, number, name, playlist_id, source_url';
-const EPISODE_COLS = 'season_id, youtube_id, name, description, duration, thumbnail, position, upload_date';
+const SEASON_COLS = 'title_id, number, name, playlist_id, source_url, order_mode';
+const EPISODE_COLS = 'season_id, youtube_id, name, description, duration, thumbnail, position, upload_date, edited';
 
 const noChanges = (): Changes => ({
   addedTitles: 0,
@@ -129,11 +129,13 @@ function replace(db: DB): Changes {
 
   db.exec(`
     DELETE FROM main.collection_items; DELETE FROM main.collections;
+    DELETE FROM main.removed_videos;
     DELETE FROM main.progress; DELETE FROM main.episodes; DELETE FROM main.seasons; DELETE FROM main.titles;
     INSERT INTO main.titles (id, ${TITLE_COLS}) SELECT id, ${TITLE_COLS} FROM src.titles;
     INSERT INTO main.seasons (id, ${SEASON_COLS}) SELECT id, ${SEASON_COLS} FROM src.seasons;
     INSERT INTO main.episodes (id, ${EPISODE_COLS}) SELECT id, ${EPISODE_COLS} FROM src.episodes;
     INSERT INTO main.progress (episode_id, seconds, duration, updated_at) SELECT episode_id, seconds, duration, updated_at FROM src.progress;
+    INSERT OR IGNORE INTO main.removed_videos (season_id, youtube_id, name) SELECT season_id, youtube_id, name FROM src.removed_videos;
     INSERT INTO main.collections (id, name) SELECT id, name FROM src.collections;
     INSERT INTO main.collection_items (collection_id, title_id, position) SELECT collection_id, title_id, position FROM src.collection_items;
   `);
@@ -207,12 +209,21 @@ function mergeSeasons(db: DB, srcTitleId: number, titleId: number, state: MergeS
       existing?.id ??
       Number(
         db
-          .prepare(`INSERT INTO main.seasons (${SEASON_COLS}) SELECT ?, number, name, playlist_id, source_url FROM src.seasons WHERE id = ?`)
+          .prepare(`INSERT INTO main.seasons (${SEASON_COLS}) SELECT ?, number, name, playlist_id, source_url, order_mode FROM src.seasons WHERE id = ?`)
           .run(titleId, s.id).lastInsertRowid,
       );
     added = added || !existing;
+    // A new season brings the videos removed from it. An existing one keeps only this computer's removals.
+    if (!existing) {
+      db.prepare(
+        'INSERT OR IGNORE INTO main.removed_videos (season_id, youtube_id, name) SELECT ?, youtube_id, name FROM src.removed_videos WHERE season_id = ?',
+      ).run(seasonId, s.id);
+    }
+    const removedHere = db.prepare('SELECT 1 FROM main.removed_videos WHERE season_id = ? AND youtube_id = ?');
     const episodes = db.prepare('SELECT id, youtube_id FROM src.episodes WHERE season_id = ? ORDER BY position, id').all(s.id) as Row[];
     episodes.forEach((e) => {
+      // Removed on this computer: the file must not bring it back.
+      if (removedHere.get(seasonId, e.youtube_id)) return;
       const mine = db.prepare('SELECT id FROM main.episodes WHERE season_id = ? AND youtube_id = ?').get(seasonId, e.youtube_id) as { id: number } | undefined;
       if (mine) {
         state.episodeIds.set(e.id, mine.id);
@@ -222,7 +233,7 @@ function mergeSeasons(db: DB, srcTitleId: number, titleId: number, state: MergeS
         db
           .prepare(
             `INSERT INTO main.episodes (${EPISODE_COLS})
-             SELECT ?, youtube_id, name, description, duration, thumbnail, position, upload_date FROM src.episodes WHERE id = ?`,
+             SELECT ?, youtube_id, name, description, duration, thumbnail, position, upload_date, edited FROM src.episodes WHERE id = ?`,
           )
           .run(seasonId, e.id).lastInsertRowid,
       );

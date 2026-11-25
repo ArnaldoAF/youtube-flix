@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS seasons (
   name        TEXT NOT NULL,
   playlist_id TEXT,
   source_url  TEXT,
+  order_mode  TEXT NOT NULL DEFAULT 'playlist' CHECK (order_mode IN ('playlist', 'reversed', 'manual')),
   UNIQUE (title_id, number)
 );
 
@@ -43,7 +44,17 @@ CREATE TABLE IF NOT EXISTS episodes (
                      CHECK (download_status IN ('none', 'queued', 'downloading', 'paused', 'done', 'error')),
   download_error     TEXT,
   download_queued_at TEXT,
+  edited             INTEGER NOT NULL DEFAULT 0 CHECK (edited IN (0, 1)),
   UNIQUE (season_id, youtube_id)
+);
+
+-- Videos removed from a season by the user: a playlist check must not add them back.
+CREATE TABLE IF NOT EXISTS removed_videos (
+  season_id  INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+  youtube_id TEXT NOT NULL,
+  name       TEXT NOT NULL DEFAULT '',
+  removed_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (season_id, youtube_id)
 );
 CREATE INDEX IF NOT EXISTS idx_episodes_status ON episodes(download_status);
 CREATE INDEX IF NOT EXISTS idx_episodes_youtube ON episodes(youtube_id);
@@ -91,5 +102,23 @@ export function openDb(file: string): DB {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.exec(SCHEMA);
+  migrate(db);
   return db;
+}
+
+/** Columns added after the first release. CREATE TABLE IF NOT EXISTS skips tables that already exist. */
+const ADDED_COLUMNS: { table: string; column: string; definition: string }[] = [
+  {
+    table: 'seasons',
+    column: 'order_mode',
+    definition: "TEXT NOT NULL DEFAULT 'playlist' CHECK (order_mode IN ('playlist', 'reversed', 'manual'))",
+  },
+  { table: 'episodes', column: 'edited', definition: 'INTEGER NOT NULL DEFAULT 0 CHECK (edited IN (0, 1))' },
+];
+
+function migrate(db: DB): void {
+  ADDED_COLUMNS.forEach(({ table, column, definition }) => {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    if (!columns.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  });
 }

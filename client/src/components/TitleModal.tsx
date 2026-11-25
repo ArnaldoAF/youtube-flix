@@ -1,4 +1,4 @@
-import { Download, Pencil, Play, RefreshCw, Sparkles, Star, Trash2, X } from 'lucide-react';
+import { Download, ListOrdered, Pencil, Play, RefreshCw, Sparkles, Star, Trash2, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
@@ -7,10 +7,11 @@ import { recommend } from '../browse';
 import { fallbackToHq, formatBytes, formatDuration, heroImage, progressPercent } from '../format';
 import { useCatalog } from '../store';
 import type { Episode, TitleDetail } from '../types';
-import { ChannelLink } from './ChannelLink';
+import { ChannelLink, GenreLink } from './ChannelLink';
 import { CollectionInfo, NextInCollectionButton, SuggestionPrompt, useSuggestions } from './CollectionPanels';
 import { DownloadControl } from './DownloadControl';
 import { EditTitleForm } from './EditTitleForm';
+import { EpisodeEditor } from './EpisodeEditor';
 import { TitleCard } from './TitleCard';
 
 export function TitleModal({ id }: { id: number }) {
@@ -23,6 +24,7 @@ export function TitleModal({ id }: { id: number }) {
   const [error, setError] = useState<string | null>(null);
   const [seasonId, setSeasonId] = useState<number | null>(null);
   const [editing, setEditing] = useState(false);
+  const [editingEpisodes, setEditingEpisodes] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
 
   const close = () => {
@@ -184,7 +186,14 @@ export function TitleModal({ id }: { id: number }) {
                         <ChannelLink channel={title.channel} />
                       </Meta>
                     )}
-                    {title.tags.length > 0 && <Meta label="Genres">{title.tags.join(', ')}</Meta>}
+                    {title.tags.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-white/50">Genres: </span>
+                        {title.tags.map((tag) => (
+                          <GenreLink key={tag} genre={tag} />
+                        ))}
+                      </div>
+                    )}
                     <a href={title.sourceUrl} target="_blank" rel="noreferrer" className="block text-white/50 hover:text-white">
                       Open on YouTube ↗
                     </a>
@@ -196,25 +205,43 @@ export function TitleModal({ id }: { id: number }) {
                 <div className="mt-8">
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <h3 className="text-xl font-bold">{isSeries ? 'Episodes' : 'Parts'}</h3>
-                    {isSeries && title.seasons.length > 1 && (
-                      <select
-                        value={season.id}
-                        onChange={(e) => setSeasonId(Number(e.target.value))}
-                        className="rounded border border-white/30 bg-black px-3 py-1.5 text-sm"
-                      >
-                        {title.seasons.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.name} ({s.episodes.length})
-                          </option>
-                        ))}
-                      </select>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {isSeries && title.seasons.length > 1 && (
+                        <select
+                          value={season.id}
+                          onChange={(e) => setSeasonId(Number(e.target.value))}
+                          className="rounded border border-white/30 bg-black px-3 py-1.5 text-sm"
+                        >
+                          {title.seasons.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name} ({s.episodes.length})
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      {isSeries && (
+                        <button
+                          type="button"
+                          aria-pressed={editingEpisodes}
+                          onClick={() => setEditingEpisodes((v) => !v)}
+                          className={`flex items-center gap-2 rounded px-3 py-1.5 text-sm ${
+                            editingEpisodes ? 'bg-white text-black hover:bg-white/80' : 'bg-white/15 hover:bg-white/25'
+                          }`}
+                        >
+                          <ListOrdered size={16} aria-hidden /> {editingEpisodes ? 'Done' : 'Edit episodes'}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <ol className="divide-y divide-white/10 border-t border-white/10">
-                    {season.episodes.map((ep) => (
-                      <EpisodeRow key={ep.id} episode={ep} onPlay={() => navigate(`/watch/${ep.id}`)} />
-                    ))}
-                  </ol>
+                  {isSeries && editingEpisodes ? (
+                    <EpisodeEditor season={season} local={local} removable={title.episodeCount > 1} run={run} />
+                  ) : (
+                    <ol className="divide-y divide-white/10 border-t border-white/10">
+                      {season.episodes.map((ep) => (
+                        <EpisodeRow key={ep.id} episode={ep} onPlay={() => navigate(`/watch/${ep.id}`)} />
+                      ))}
+                    </ol>
+                  )}
                 </div>
               )}
 

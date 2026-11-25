@@ -4,7 +4,7 @@ import { Footer } from './components/Footer';
 import { Navbar } from './components/Navbar';
 import { TitleModal } from './components/TitleModal';
 import { AddTitle } from './pages/AddTitle';
-import { Channel } from './pages/Channel';
+import { Channel, Genre } from './pages/Channel';
 import { Collection } from './pages/Collection';
 import { Downloads } from './pages/Downloads';
 import { Home } from './pages/Home';
@@ -30,6 +30,7 @@ export function App() {
           <Route path="/movies" element={<Home filter="movie" />} />
           <Route path="/search" element={<Search />} />
           <Route path="/channel/:name" element={<Channel />} />
+          <Route path="/genre/:name" element={<Genre />} />
           <Route path="/collection/:id" element={<Collection />} />
           <Route path="/add" element={<AddTitle />} />
           <Route path="/downloads" element={<Downloads />} />

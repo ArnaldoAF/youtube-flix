@@ -21,6 +21,8 @@ import { ProgressBar } from './ProgressBar';
 export type PlayerSource = { kind: 'local'; src: string } | { kind: 'youtube'; videoId: string };
 
 const HIDE_AFTER_MS = 3000;
+/** How long after a touch its click can arrive (long presses are not taps). */
+const TAP_CLICK_MS = 1000;
 const SKIP_SECONDS = 10;
 const NEXT_PROMPT_SECONDS = 30;
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -47,6 +49,30 @@ function savePrefs(volume: number, muted: boolean) {
 }
 
 type Flash = { icon: ReactNode; key: number };
+
+/** Control icons: compact on phones, full size from the md width up. */
+const ICON = 'size-7 md:size-[42px]';
+const ICON_SMALL = 'size-6 md:size-10';
+
+const isTouchDevice = () => typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
+
+type LockableOrientation = ScreenOrientation & { lock?: (o: string) => Promise<void>; unlock?: () => void };
+const orientation = () => (typeof screen !== 'undefined' ? (screen.orientation as LockableOrientation | undefined) : undefined);
+
+/**
+ * Full screen and landscape, for phones. Browsers allow it only right after a tap, so this can fail;
+ * it reports whether full screen was reached. iPhone Safari has neither API, so nothing happens there.
+ */
+async function enterLandscape(el: HTMLElement | null): Promise<boolean> {
+  if (!el || !el.requestFullscreen) return false;
+  try {
+    if (!document.fullscreenElement) await el.requestFullscreen();
+  } catch {
+    return false;
+  }
+  await orientation()?.lock?.('landscape').catch(() => undefined);
+  return true;
+}
 
 export function NetflixPlayer({
   source,
@@ -116,7 +142,7 @@ export function NetflixPlayer({
   const seekBy = useCallback((delta: number) => {
     const s = stateRef.current;
     handle.current?.seek(Math.min(Math.max(0, s.currentTime + delta), s.duration || Infinity));
-    showFlash(<Skip10 forward={delta > 0} size={56} />);
+    showFlash(<Skip10 forward={delta > 0} className="size-14" labelClass="text-base" />);
     wake();
   }, [wake]);
 
@@ -136,14 +162,52 @@ export function NetflixPlayer({
 
   const toggleFullscreen = useCallback(() => {
     if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+    else if (isTouchDevice()) void enterLandscape(container.current);
     else void container.current?.requestFullscreen().catch(() => undefined);
   }, []);
 
   useEffect(() => {
-    const onChange = () => setFullscreen(Boolean(document.fullscreenElement));
+    const onChange = () => {
+      const on = Boolean(document.fullscreenElement);
+      setFullscreen(on);
+      if (!on) orientation()?.unlock?.();
+    };
     document.addEventListener('fullscreenchange', onChange);
     return () => document.removeEventListener('fullscreenchange', onChange);
   }, []);
+
+  // Phones open the player in full screen landscape. If the browser blocks it (no recent tap), the
+  // first tap inside the player does it instead.
+  const landscapePending = useRef(false);
+  useEffect(() => {
+    if (!isTouchDevice()) return;
+    void enterLandscape(container.current).then((ok) => {
+      landscapePending.current = !ok;
+    });
+    return () => {
+      if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+      orientation()?.unlock?.();
+    };
+  }, []);
+
+  // On touch screens a tap while the controls are hidden only brings them back; it must not also
+  // pause (or press a button that was invisible). The click that follows the tap is swallowed.
+  // It only covers the click of that same tap: a touch that turns into a scroll never clicks, and the
+  // flag must not linger to swallow a later click (a keyboard Enter, say).
+  const swallowUntil = useRef(0);
+  const onTouchDown = (e: React.PointerEvent) => {
+    if (e.pointerType === 'mouse') {
+      swallowUntil.current = 0;
+      return;
+    }
+    const swallow = !visible || landscapePending.current;
+    if (landscapePending.current) {
+      landscapePending.current = false;
+      void enterLandscape(container.current);
+    }
+    swallowUntil.current = swallow ? Date.now() + TAP_CLICK_MS : 0;
+    wake();
+  };
 
   useEffect(() => {
     wake();
@@ -203,6 +267,13 @@ export function NetflixPlayer({
       className={`fixed inset-0 select-none overflow-hidden bg-black text-white ${visible ? '' : 'cursor-none'}`}
       onMouseMove={wake}
       onMouseLeave={() => state.playing && setIdle(true)}
+      onPointerDownCapture={onTouchDown}
+      onClickCapture={(e) => {
+        if (Date.now() > swallowUntil.current) return;
+        swallowUntil.current = 0;
+        e.stopPropagation();
+        e.preventDefault();
+      }}
     >
       <div className="absolute inset-0">
         {source.kind === 'local' ? (
@@ -242,47 +313,47 @@ export function NetflixPlayer({
 
       {/* Top bar */}
       {/* Like the bottom bar: empty gradient passes clicks through to the play/pause layer. */}
-      <div className={`pointer-events-none absolute inset-x-0 top-0 flex items-center gap-4 bg-gradient-to-b from-black/70 to-transparent p-5 md:p-8 ${fade}`}>
+      <div className={`pointer-events-none absolute inset-x-0 top-0 flex items-center gap-4 bg-gradient-to-b from-black/70 to-transparent p-3 md:p-8 ${fade}`}>
         <div className={visible ? 'pointer-events-auto' : ''}>
           <CtrlButton label="Back" onClick={onBack}>
-            <ArrowLeft size={44} />
+            <ArrowLeft className={ICON} />
           </CtrlButton>
         </div>
         <div className="ml-auto">{badge}</div>
       </div>
 
       {/* Bottom controls */}
-      <div className={`pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent px-5 pb-5 pt-28 md:px-10 md:pb-7 ${fade}`}>
-        <div className={`flex items-center gap-4 ${visible ? 'pointer-events-auto' : ''}`}>
+      <div className={`pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent px-3 pb-2 pt-20 md:px-10 md:pb-7 md:pt-28 ${fade}`}>
+        <div className={`flex items-center gap-3 md:gap-4 ${visible ? 'pointer-events-auto' : ''}`}>
           <ProgressBar
             current={state.currentTime}
             duration={state.duration}
             buffered={state.buffered}
             onSeek={(t) => handle.current?.seek(t)}
           />
-          <span className="w-20 text-right text-base tabular-nums text-white/90">{formatClock(remaining)}</span>
+          <span className="w-14 text-right text-sm tabular-nums text-white/90 md:w-20 md:text-base">{formatClock(remaining)}</span>
         </div>
 
-        <div className={`mt-2 flex items-center gap-1 md:gap-4 ${visible ? 'pointer-events-auto' : ''}`}>
+        <div className={`mt-1 flex items-center gap-0.5 md:mt-2 md:gap-4 ${visible ? 'pointer-events-auto' : ''}`}>
           <CtrlButton label={state.playing ? 'Pause' : 'Play'} onClick={togglePlay}>
-            {state.playing ? <Pause size={46} fill="currentColor" /> : <Play size={46} fill="currentColor" />}
+            {state.playing ? <Pause className={ICON} fill="currentColor" /> : <Play className={ICON} fill="currentColor" />}
           </CtrlButton>
           <CtrlButton label="Back 10 seconds" onClick={() => seekBy(-SKIP_SECONDS)}>
-            <Skip10 size={42} />
+            <Skip10 className={ICON} />
           </CtrlButton>
           <CtrlButton label="Forward 10 seconds" onClick={() => seekBy(SKIP_SECONDS)}>
-            <Skip10 forward size={42} />
+            <Skip10 forward className={ICON} />
           </CtrlButton>
           <VolumeControl volume={state.volume} muted={state.muted} onVolume={setVolume} onToggleMute={toggleMute} />
 
-          <div className="mx-2 min-w-0 flex-1 truncate text-center text-lg md:text-xl">
+          <div className="mx-1 min-w-0 flex-1 truncate text-center text-sm md:mx-2 md:text-xl">
             <span className="font-bold">{title}</span>
             {subtitle && <span className="ml-3 text-white/75">{subtitle}</span>}
           </div>
 
           {next && (
             <CtrlButton label={nextLabel} onClick={next}>
-              <SkipForward size={42} fill="currentColor" />
+              <SkipForward className={ICON} fill="currentColor" />
             </CtrlButton>
           )}
           <div className="relative">
@@ -296,11 +367,11 @@ export function NetflixPlayer({
               />
             )}
             <CtrlButton label="Playback speed" onClick={() => setMenu(menu === 'speed' ? null : 'speed')}>
-              <Gauge size={40} />
+              <Gauge className={ICON_SMALL} />
             </CtrlButton>
           </div>
           <CtrlButton label={fullscreen ? 'Exit full screen' : 'Full screen'} onClick={toggleFullscreen}>
-            {fullscreen ? <Minimize size={40} /> : <Maximize size={40} />}
+            {fullscreen ? <Minimize className={ICON_SMALL} /> : <Maximize className={ICON_SMALL} />}
           </CtrlButton>
         </div>
       </div>
@@ -336,14 +407,21 @@ function CtrlButton({ label, onClick, children }: { label: string; onClick: () =
   );
 }
 
-function Skip10({ forward = false, size }: { forward?: boolean; size: number }) {
+/** The "10 seconds" icon. Sizes are classes so phones can use smaller ones. */
+function Skip10({
+  forward = false,
+  className = ICON,
+  labelClass = 'text-[8px] md:text-xs',
+}: {
+  forward?: boolean;
+  className?: string;
+  labelClass?: string;
+}) {
   const Icon = forward ? RotateCw : RotateCcw;
   return (
     <span className="relative inline-flex">
-      <Icon size={size} strokeWidth={1.75} />
-      <span className="absolute inset-0 flex items-center justify-center pt-0.5 font-bold" style={{ fontSize: size * 0.28 }}>
-        10
-      </span>
+      <Icon className={className} strokeWidth={1.75} />
+      <span className={`absolute inset-0 flex items-center justify-center pt-0.5 font-bold ${labelClass}`}>10</span>
     </span>
   );
 }
@@ -371,7 +449,7 @@ function VolumeControl({
         </div>
       </div>
       <CtrlButton label={level === 0 ? 'Unmute' : 'Mute'} onClick={onToggleMute}>
-        <Icon size={42} />
+        <Icon className={ICON} />
       </CtrlButton>
     </div>
   );

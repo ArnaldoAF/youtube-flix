@@ -75,6 +75,12 @@ export const api = {
   refresh: (id: number) => send<{ newEpisodeIds: number[] }>('POST', `/titles/${id}/refresh`),
   updateTitle: (id: number, patch: TitlePatch) => send<TitleDetail>('PATCH', `/titles/${id}`, patch),
   deleteTitle: (id: number, keepFiles: boolean) => send<void>('DELETE', `/titles/${id}?keepFiles=${keepFiles}`),
+  reverseSeason: (seasonId: number) => send<TitleDetail>('POST', `/seasons/${seasonId}/reverse`),
+  reorderSeason: (seasonId: number, episodeIds: number[]) => send<TitleDetail>('PUT', `/seasons/${seasonId}/order`, { episodeIds }),
+  updateEpisode: (id: number, patch: { name?: string; description?: string }) => send<TitleDetail>('PATCH', `/episodes/${id}`, patch),
+  deleteEpisode: (id: number, keepFiles: boolean) => send<void>('DELETE', `/episodes/${id}?keepFiles=${keepFiles}`),
+  restoreVideo: (seasonId: number, youtubeId: string) =>
+    send<void>('DELETE', `/seasons/${seasonId}/removed/${encodeURIComponent(youtubeId)}`),
 
   episode: (id: number) => request<EpisodeContext>(`/episodes/${id}`),
   streamUrl: (id: number) => `/api/episodes/${id}/stream`,

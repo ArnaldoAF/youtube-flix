@@ -157,6 +157,11 @@ function dropUnsafeValues(db: DB): void {
     UPDATE episodes SET thumbnail = NULL WHERE thumbnail IS NOT NULL AND NOT is_web_url(thumbnail);
     DELETE FROM progress WHERE episode_id NOT IN (SELECT id FROM episodes) OR NOT ${isNumber('seconds')}
       OR (duration IS NOT NULL AND NOT ${isNumber('duration')});
+    UPDATE seasons SET order_mode = 'playlist'
+      WHERE typeof(order_mode) <> 'text' OR order_mode NOT IN ('playlist', 'reversed', 'manual');
+    UPDATE episodes SET edited = 0 WHERE NOT (typeof(edited) = 'integer' AND edited = 1);
+    DELETE FROM removed_videos WHERE season_id NOT IN (SELECT id FROM seasons) OR NOT is_video_id(youtube_id);
+    UPDATE removed_videos SET name = '' WHERE typeof(name) <> 'text';
     DELETE FROM collections WHERE typeof(name) <> 'text' OR trim(name) = '';
     DELETE FROM collection_items WHERE collection_id NOT IN (SELECT id FROM collections)
       OR title_id NOT IN (SELECT id FROM titles WHERE type = 'movie') OR NOT ${isNumber('position')};

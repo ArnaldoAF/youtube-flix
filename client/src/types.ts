@@ -28,6 +28,10 @@ export interface Season {
   number: number;
   name: string;
   playlistId: string | null;
+  /** playlist: YouTube's order; reversed: upside down; manual: the user's own order. */
+  orderMode: 'playlist' | 'reversed' | 'manual';
+  /** Videos removed from this season; a playlist check does not add them back. */
+  removed: { youtubeId: string; name: string }[];
   episodes: Episode[];
 }
 
