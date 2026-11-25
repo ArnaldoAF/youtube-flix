@@ -76,7 +76,7 @@ export function Watch() {
   }
   if (!ctx) return <div className="h-screen bg-black" />;
 
-  const { episode, title, season, nextEpisodeId } = ctx;
+  const { episode, title, season, nextEpisodeId, nextTitle } = ctx;
   const isSeries = title.type === 'series';
 
   return (
@@ -99,6 +99,7 @@ export function Watch() {
         ) : null
       }
       next={nextEpisodeId ? () => navigate(`/watch/${nextEpisodeId}`, { replace: true }) : null}
+      nextLabel={nextTitle ? 'Next movie' : 'Next episode'}
       onBack={() => navigate(`/?t=${title.id}`)}
       onProgress={save}
       onEnded={(duration) => duration && save(duration, duration, true)}

@@ -55,6 +55,7 @@ export function NetflixPlayer({
   subtitle,
   badge,
   next,
+  nextLabel = 'Next episode',
   onBack,
   onProgress,
   onEnded,
@@ -66,6 +67,8 @@ export function NetflixPlayer({
   subtitle?: string;
   badge?: ReactNode;
   next: (() => void) | null;
+  /** "Next movie" when the next item is the following movie of a collection. */
+  nextLabel?: string;
   onBack: () => void;
   onProgress: (seconds: number, duration: number | null, force?: boolean) => void;
   onEnded: (duration: number | null) => void;
@@ -278,7 +281,7 @@ export function NetflixPlayer({
           </div>
 
           {next && (
-            <CtrlButton label="Next episode" onClick={next}>
+            <CtrlButton label={nextLabel} onClick={next}>
               <SkipForward size={42} fill="currentColor" />
             </CtrlButton>
           )}
@@ -307,7 +310,7 @@ export function NetflixPlayer({
           onClick={next}
           className="absolute bottom-36 right-6 flex items-center gap-2 rounded bg-white px-6 py-3 text-lg font-bold text-black shadow-2xl transition hover:bg-white/80 md:right-10"
         >
-          <SkipForward size={22} fill="currentColor" /> Next episode
+          <SkipForward size={22} fill="currentColor" /> {nextLabel}
         </button>
       )}
     </div>

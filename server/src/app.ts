@@ -17,6 +17,7 @@ import {
 import * as auth from './auth.js';
 import * as repo from './catalog/repo.js';
 import { CATALOG_CHANGED, catalogRoutes } from './catalogRoutes.js';
+import { householdCollectionRoutes, pcOnlyCollectionRoutes } from './collectionRoutes.js';
 import { autoDownloadIds, importSchema, importTitle, preview, refreshTitle } from './catalog/service.js';
 import { CLIENT_DIST, PORT } from './config.js';
 import type { DB } from './db.js';
@@ -221,6 +222,8 @@ function householdRoutes(db: DB, fetcher: Fetcher, queue: DownloadQueue) {
     });
   });
 
+  api.use(householdCollectionRoutes(db));
+
   // --- Read-only settings & system ---
   api.get('/settings', (_req, res) => res.json(getSettings(db)));
   api.get(
@@ -249,6 +252,7 @@ function pcOnlyRoutes(db: DB, queue: DownloadQueue, onNetworkChange?: (network: 
   });
 
   api.use(catalogRoutes(db, queue));
+  api.use(pcOnlyCollectionRoutes(db));
 
   api.delete('/downloads/files', (req, res) => {
     deleteFilesSchema.parse(req.body).episodeIds.forEach((id) => queue.deleteFile(id));

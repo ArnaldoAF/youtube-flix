@@ -76,5 +76,52 @@ export function useViewMode(): [ViewMode, (mode: ViewMode) => void] {
   return [mode, choose];
 }
 
+export interface CollectionGroup {
+  id: number;
+  name: string;
+  /** Movies in story order. */
+  movies: TitleSummary[];
+}
+
+/** Collections as they appear in the title list, each with its movies in order. */
+export function collectionGroups(titles: TitleSummary[]): CollectionGroup[] {
+  const groups = new Map<number, CollectionGroup>();
+  titles.forEach((t) => {
+    if (!t.collection) return;
+    const group = groups.get(t.collection.id) ?? { id: t.collection.id, name: t.collection.name, movies: [] };
+    groups.set(t.collection.id, { ...group, movies: [...group.movies, t] });
+  });
+  return [...groups.values()]
+    .map((g) => ({ ...g, movies: [...g.movies].sort((a, b) => (a.collection?.position ?? 0) - (b.collection?.position ?? 0)) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export const collectionPath = (id: number) => `/collection/${id}`;
+
+const DISMISSED_KEY = 'ytf.collections.dismissed';
+const suggestionKey = (titleIds: number[]) => [...titleIds].sort((a, b) => a - b).join(',');
+
+/** Suggestions the user answered "Not now" to, in this browser only. */
+export function dismissedSuggestions(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(DISMISSED_KEY) ?? '[]') as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
+export function isDismissed(titleIds: number[], dismissed: Set<string>): boolean {
+  return dismissed.has(suggestionKey(titleIds));
+}
+
+export function dismissSuggestion(titleIds: number[]): void {
+  try {
+    const next = [...dismissedSuggestions(), suggestionKey(titleIds)];
+    localStorage.setItem(DISMISSED_KEY, JSON.stringify([...new Set(next)]));
+  } catch {
+    // Blocked storage only means the suggestion comes back next time.
+  }
+}
+
 /** Grid classes shared by grid view, filter results, channel pages and recommendations. */
 export const GRID = 'grid grid-cols-2 gap-x-2 gap-y-16 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6';

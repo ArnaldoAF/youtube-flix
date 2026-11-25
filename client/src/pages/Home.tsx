@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { byName, genresOf, GRID, pickHeroes, useViewMode, type ViewMode } from '../browse';
+import { byName, collectionGroups, genresOf, GRID, pickHeroes, useViewMode, type ViewMode } from '../browse';
+import { SuggestionPrompt, useSuggestions } from '../components/CollectionPanels';
 import { BrowseToolbar, ViewToggle, type FilterOptions } from '../components/BrowseToolbar';
 import { HeroCarousel } from '../components/Hero';
 import { Row } from '../components/Row';
@@ -61,6 +62,7 @@ export function Home({ filter }: { filter?: 'movie' | 'series' }) {
       <div className="mt-8 flex justify-end px-4 md:px-12">
         <ViewToggle view={view} onView={setView} />
       </div>
+      {filter === 'movie' && <SuggestedCollections />}
       <HomeRows titles={titles} continueItems={continueItems.filter((c) => !filter || c.title.type === filter)} filter={filter} view={view} />
     </div>
   );
@@ -105,6 +107,11 @@ function HomeRows({
           {ofType('movie').map(card)}
         </Row>
       )}
+      {collectionGroups(titles).map((c) => (
+        <Row key={`collection-${c.id}`} title={c.name} layout={view}>
+          {c.movies.map(card)}
+        </Row>
+      ))}
       {genres.map((g) => (
         <Row key={g} title={g} layout={view}>
           {titles.filter((t) => genresOf(t).includes(g)).map(card)}
@@ -154,6 +161,22 @@ function FilteredGrid({
         </p>
       )}
     </div>
+  );
+}
+
+/** On the Movies page: collections the app detected and the user has not dismissed. */
+function SuggestedCollections() {
+  const [suggestions, refresh] = useSuggestions();
+  if (!suggestions.length) return null;
+  return (
+    <section className="mx-4 mt-6 md:mx-12">
+      <h2 className="mb-2 text-lg font-semibold text-white/90">Suggested collections</h2>
+      <div className="grid gap-3 md:grid-cols-2">
+        {suggestions.map((s) => (
+          <SuggestionPrompt key={s.titleIds.join(',')} suggestion={s} onDone={refresh} />
+        ))}
+      </div>
+    </section>
   );
 }
 

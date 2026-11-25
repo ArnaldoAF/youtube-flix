@@ -71,6 +71,19 @@ CREATE TABLE IF NOT EXISTS sessions (
   created_at INTEGER NOT NULL,
   last_seen  INTEGER NOT NULL
 );
+
+-- Movie collections (sequels): separate movies in order. A movie is in at most one collection.
+CREATE TABLE IF NOT EXISTS collections (
+  id   INTEGER PRIMARY KEY,
+  name TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS collection_items (
+  collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+  title_id      INTEGER NOT NULL UNIQUE REFERENCES titles(id) ON DELETE CASCADE,
+  position      INTEGER NOT NULL,
+  PRIMARY KEY (collection_id, title_id)
+);
 `;
 
 export function openDb(file: string): DB {

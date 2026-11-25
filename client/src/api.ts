@@ -1,4 +1,6 @@
 import type {
+  Collection,
+  CollectionSuggestion,
   ContinueItem,
   DownloadItem,
   DownloadUpdate,
@@ -93,6 +95,12 @@ export const api = {
   saveSettings: (patch: Partial<Settings>) => send<Settings>('PUT', '/settings', patch),
   system: () => request<SystemInfo>('/system'),
   updateYtDlp: () => send<{ output: string }>('POST', '/system/update-ytdlp'),
+
+  collections: () => request<Collection[]>('/collections'),
+  collectionSuggestions: () => request<CollectionSuggestion[]>('/collections/suggestions'),
+  createCollection: (name: string, titleIds: number[]) => send<{ id: number }>('POST', '/collections', { name, titleIds }),
+  updateCollection: (id: number, patch: { name?: string; titleIds?: number[] }) => send<Collection | null>('PUT', `/collections/${id}`, patch),
+  deleteCollection: (id: number) => send<void>('DELETE', `/collections/${id}`),
 
   catalogExportUrl: '/api/catalog/export',
   previewCatalogImport: (file: File, mode: ImportMode) => upload<ImportSummary>(`/catalog/inspect?mode=${mode}`, file),

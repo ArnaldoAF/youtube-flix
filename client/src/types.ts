@@ -45,6 +45,28 @@ export interface TitleSummary {
   episodeCount: number;
   totalDuration: number;
   downloadedCount: number;
+  /** Set when this movie is part of a collection. */
+  collection: CollectionRef | null;
+}
+
+export interface CollectionRef {
+  id: number;
+  name: string;
+  /** 1-based place of this movie in the collection. */
+  position: number;
+  size: number;
+}
+
+export interface Collection {
+  id: number;
+  name: string;
+  titleIds: number[];
+}
+
+/** Movies the app thinks belong together, offered as a collection. */
+export interface CollectionSuggestion {
+  name: string;
+  titleIds: number[];
 }
 
 export interface TitleDetail extends TitleSummary {
@@ -70,6 +92,8 @@ export interface EpisodeContext {
   title: TitleRef;
   season: { id: number; number: number; name: string };
   nextEpisodeId: number | null;
+  /** Set when `nextEpisodeId` starts the next movie of a collection. */
+  nextTitle: { id: number; name: string } | null;
 }
 
 export interface VideoMeta {
@@ -156,6 +180,7 @@ export interface ImportSummary {
   removedTitles: number;
   relinkedVideos: number;
   unlinked: { files: number; bytes: number };
+  collectionsAdded: number;
   /** Set once an import has run; null for a preview. */
   backup: string | null;
 }

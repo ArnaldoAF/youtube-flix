@@ -8,6 +8,7 @@ import { fallbackToHq, formatBytes, formatDuration, heroImage, progressPercent }
 import { useCatalog } from '../store';
 import type { Episode, TitleDetail } from '../types';
 import { ChannelLink } from './ChannelLink';
+import { CollectionInfo, NextInCollectionButton, SuggestionPrompt, useSuggestions } from './CollectionPanels';
 import { DownloadControl } from './DownloadControl';
 import { EditTitleForm } from './EditTitleForm';
 import { TitleCard } from './TitleCard';
@@ -16,6 +17,7 @@ export function TitleModal({ id }: { id: number }) {
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const { version, reload, titles } = useCatalog();
+  const [suggestions, refreshSuggestions] = useSuggestions();
   const { local } = useAuth();
   const [title, setTitle] = useState<TitleDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -76,6 +78,7 @@ export function TitleModal({ id }: { id: number }) {
   const isSeries = title?.type === 'series';
   const allEpisodes = title?.seasons.flatMap((s) => s.episodes) ?? [];
   const recommended = title ? recommend(title, titles) : [];
+  const suggestion = title && !title.collection ? suggestions.find((s) => s.titleIds.includes(title.id)) : undefined;
   const sizeOnDisk = allEpisodes.reduce((sum, e) => sum + (e.hasLocalFile ? (e.fileSize ?? 0) : 0), 0);
 
   return (
@@ -118,6 +121,7 @@ export function TitleModal({ id }: { id: number }) {
                   >
                     <Play size={20} fill="currentColor" /> Play
                   </button>
+                  <NextInCollectionButton title={title} />
                   <IconAction label="Download all" onClick={() => run('download', () => api.download({ titleId: title.id }))}>
                     <Download size={18} />
                   </IconAction>
@@ -167,6 +171,12 @@ export function TitleModal({ id }: { id: number }) {
                     <p className="whitespace-pre-line text-sm leading-relaxed text-white/90 line-clamp-6">
                       {title.description || 'No description.'}
                     </p>
+                    <CollectionInfo title={title} />
+                    {suggestion && (
+                      <div className="mt-4">
+                        <SuggestionPrompt suggestion={suggestion} onDone={refreshSuggestions} />
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-2 text-sm">
                     {title.channel && (

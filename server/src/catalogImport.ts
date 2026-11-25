@@ -23,6 +23,8 @@ export interface ImportSummary {
   relinkedVideos: number;
   /** Replace: downloaded videos that stay on disk but are no longer in the catalog. */
   unlinked: { files: number; bytes: number };
+  /** Collections created, or extended with movies, by this import. */
+  collectionsAdded: number;
   backup: string | null;
 }
 
@@ -59,6 +61,7 @@ const noChanges = (): Changes => ({
   removedTitles: 0,
   relinkedVideos: 0,
   unlinked: { files: 0, bytes: 0 },
+  collectionsAdded: 0,
 });
 
 const count = (db: DB, table: string) => (db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n;
@@ -125,15 +128,25 @@ function replace(db: DB): Changes {
   ).filter((f) => existsSync(f.local_path));
 
   db.exec(`
+    DELETE FROM main.collection_items; DELETE FROM main.collections;
     DELETE FROM main.progress; DELETE FROM main.episodes; DELETE FROM main.seasons; DELETE FROM main.titles;
     INSERT INTO main.titles (id, ${TITLE_COLS}) SELECT id, ${TITLE_COLS} FROM src.titles;
     INSERT INTO main.seasons (id, ${SEASON_COLS}) SELECT id, ${SEASON_COLS} FROM src.seasons;
     INSERT INTO main.episodes (id, ${EPISODE_COLS}) SELECT id, ${EPISODE_COLS} FROM src.episodes;
     INSERT INTO main.progress (episode_id, seconds, duration, updated_at) SELECT episode_id, seconds, duration, updated_at FROM src.progress;
+    INSERT INTO main.collections (id, name) SELECT id, name FROM src.collections;
+    INSERT INTO main.collection_items (collection_id, title_id, position) SELECT collection_id, title_id, position FROM src.collection_items;
   `);
   takePortableSettings(db);
 
-  const changes = { ...noChanges(), removedTitles, addedTitles: count(db, 'main.titles'), addedEpisodes: count(db, 'main.episodes'), progressUpdated: count(db, 'main.progress') };
+  const changes = {
+    ...noChanges(),
+    removedTitles,
+    addedTitles: count(db, 'main.titles'),
+    addedEpisodes: count(db, 'main.episodes'),
+    progressUpdated: count(db, 'main.progress'),
+    collectionsAdded: count(db, 'main.collections'),
+  };
   return kept.reduce((acc, f) => {
     const info = db
       .prepare("UPDATE main.episodes SET download_status = 'done', local_path = ?, file_size = ? WHERE youtube_id = ?")
@@ -160,6 +173,8 @@ interface MergeState {
   /** Imported episode id → id in this catalog. */
   episodeIds: Map<number, number>;
   newEpisodeIds: number[];
+  /** Imported title id → id in this catalog. */
+  titleIds: Map<number, number>;
 }
 
 /** Returns the matching title in this catalog, adding it when there is none. `true` when it already existed. */
@@ -236,14 +251,48 @@ function mergeProgress(db: DB, state: MergeState): void {
   });
 }
 
+/**
+ * A collection here with the same name gains the imported movies it lacks, at the end. Otherwise a new
+ * one is created when at least two of its movies are free. A movie already in a collection on this
+ * computer stays where it is.
+ */
+function mergeCollections(db: DB, state: MergeState): void {
+  const collections = db.prepare('SELECT id, name FROM src.collections ORDER BY id').all() as Row[];
+  const inAnyCollection = (titleId: number) => Boolean(db.prepare('SELECT 1 FROM main.collection_items WHERE title_id = ?').get(titleId));
+  collections.forEach((c) => {
+    const mapped = (db.prepare('SELECT title_id FROM src.collection_items WHERE collection_id = ? ORDER BY position, title_id').all(c.id) as Row[])
+      .map((i) => state.titleIds.get(i.title_id))
+      .filter((id): id is number => id !== undefined);
+    // Two titles in the file can map to one movie here (same link): keep it once, at its first place.
+    const members = [...new Set(mapped)];
+    const free = members.filter((id) => !inAnyCollection(id));
+    const mine = db.prepare('SELECT id FROM main.collections WHERE lower(trim(name)) = lower(trim(?)) ORDER BY id LIMIT 1').get(c.name) as Row | undefined;
+    if (mine) {
+      if (!free.length) return;
+      const { last } = db.prepare('SELECT COALESCE(MAX(position), 0) AS last FROM main.collection_items WHERE collection_id = ?').get(mine.id) as Row;
+      const insert = db.prepare('INSERT INTO main.collection_items (collection_id, title_id, position) VALUES (?, ?, ?)');
+      free.forEach((titleId, i) => insert.run(mine.id, titleId, last + i + 1));
+      state.changes.collectionsAdded += 1;
+      return;
+    }
+    if (free.length < 2) return;
+    const id = Number(db.prepare('INSERT INTO main.collections (name) VALUES (?)').run(c.name).lastInsertRowid);
+    const insert = db.prepare('INSERT INTO main.collection_items (collection_id, title_id, position) VALUES (?, ?, ?)');
+    free.forEach((titleId, i) => insert.run(id, titleId, i + 1));
+    state.changes.collectionsAdded += 1;
+  });
+}
+
 function merge(db: DB): Changes {
-  const state: MergeState = { changes: noChanges(), episodeIds: new Map(), newEpisodeIds: [] };
+  const state: MergeState = { changes: noChanges(), episodeIds: new Map(), newEpisodeIds: [], titleIds: new Map() };
   const titles = db.prepare('SELECT id, type, source_url, tags FROM src.titles ORDER BY id').all() as Row[];
   titles.forEach((t) => {
     const { titleId, existed, tagsChanged } = mergeTitle(db, t, state);
+    state.titleIds.set(t.id, titleId);
     const grew = mergeSeasons(db, t.id, titleId, state);
     if (existed && (grew || tagsChanged)) state.changes.updatedTitles += 1;
   });
+  mergeCollections(db, state);
   mergeProgress(db, state);
   state.newEpisodeIds.forEach((id) => {
     const { youtube_id } = db.prepare('SELECT youtube_id FROM main.episodes WHERE id = ?').get(id) as { youtube_id: string };

@@ -21,6 +21,7 @@ function CardShell({
   meta,
   progress,
   badge,
+  label,
   onPlay,
   onOpen,
   wide = false,
@@ -30,6 +31,8 @@ function CardShell({
   meta: ReactNode;
   progress?: number;
   badge?: ReactNode;
+  /** Small top-left tag, like "1/2" for a movie in a collection. */
+  label?: string;
   onPlay: () => void;
   onOpen: () => void;
   wide?: boolean;
@@ -51,6 +54,9 @@ function CardShell({
           <p className="line-clamp-1 text-sm font-semibold drop-shadow">{name}</p>
         </div>
         {badge && <div className="absolute right-1.5 top-1.5">{badge}</div>}
+        {label && (
+          <div className="absolute left-1.5 top-1.5 rounded bg-black/70 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-white/90">{label}</div>
+        )}
         {progress !== undefined && (
           <div className="absolute inset-x-0 bottom-0 h-1 bg-white/30">
             <div className="h-full bg-flix-red" style={{ width: `${progress}%` }} />
@@ -122,6 +128,7 @@ export function TitleCard({ title, wide }: { title: TitleSummary; wide?: boolean
       name={title.name}
       meta={<TitleMetaLine title={title} />}
       badge={downloaded ? <CheckCircle2 size={18} className="text-emerald-400 drop-shadow" aria-label="Downloaded" /> : null}
+      label={title.collection ? `${title.collection.position}/${title.collection.size}` : undefined}
       onOpen={() => open(title.id)}
       onPlay={async () => navigate(`/watch/${(await api.playTarget(title.id)).episodeId}`)}
     />

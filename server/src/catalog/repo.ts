@@ -1,5 +1,6 @@
 import type { DB } from '../db.js';
 import { NotFoundError } from '../errors.js';
+import { collectionOf, collectionRefs, nextMovie, pruneCollections, type CollectionRef } from './collections.js';
 import type { VideoMeta } from '../youtube/mapper.js';
 
 export type TitleType = 'movie' | 'series';
@@ -49,6 +50,8 @@ export interface TitleSummary {
   episodeCount: number;
   totalDuration: number;
   downloadedCount: number;
+  /** Set when this movie is part of a collection. */
+  collection: CollectionRef | null;
 }
 
 export interface TitleDetail extends TitleSummary {
@@ -81,7 +84,7 @@ function toEpisode(r: Row): Episode {
   };
 }
 
-function toSummary(r: Row): TitleSummary {
+function toSummary(r: Row, collection: CollectionRef | null): TitleSummary {
   return {
     id: r.id,
     type: r.type,
@@ -96,6 +99,7 @@ function toSummary(r: Row): TitleSummary {
     episodeCount: r.episode_count,
     totalDuration: r.total_duration,
     downloadedCount: r.downloaded_count,
+    collection,
   };
 }
 
@@ -131,8 +135,9 @@ export function createTitle(db: DB, t: NewTitle): number {
 }
 
 export function listTitles(db: DB): TitleSummary[] {
-  return (db.prepare(`${SUMMARY_SELECT} GROUP BY t.id ORDER BY t.added_at DESC, t.id DESC`).all() as Row[]).map(
-    toSummary,
+  const refs = collectionRefs(db);
+  return (db.prepare(`${SUMMARY_SELECT} GROUP BY t.id ORDER BY t.added_at DESC, t.id DESC`).all() as Row[]).map((r) =>
+    toSummary(r, refs.get(r.id) ?? null),
   );
 }
 
@@ -146,7 +151,7 @@ export function getTitle(db: DB, id: number): TitleDetail {
       .all(id) as Row[]
   ).map(toEpisode);
   return {
-    ...toSummary(row),
+    ...toSummary(row, collectionOf(db, id)),
     sourceUrl: row.source_url,
     seasons: seasons.map((s) => ({
       id: s.id,
@@ -182,8 +187,12 @@ export function updateTitle(db: DB, id: number, patch: TitlePatch): void {
 }
 
 export function deleteTitle(db: DB, id: number): void {
-  const info = db.prepare('DELETE FROM titles WHERE id = ?').run(id);
-  if (info.changes === 0) throw new NotFoundError('Title');
+  db.transaction(() => {
+    const info = db.prepare('DELETE FROM titles WHERE id = ?').run(id);
+    if (info.changes === 0) throw new NotFoundError('Title');
+    // Its collection may now hold a single movie, which connects nothing.
+    pruneCollections(db);
+  })();
 }
 
 // --- Seasons & episodes ---
@@ -246,6 +255,8 @@ export interface EpisodeContext {
   title: { id: number; name: string; type: TitleType; thumbnail: string | null };
   season: { id: number; number: number; name: string };
   nextEpisodeId: number | null;
+  /** Set when `nextEpisodeId` starts the next movie of a collection rather than this title. */
+  nextTitle: { id: number; name: string } | null;
 }
 
 export function getEpisode(db: DB, id: number): EpisodeContext {
@@ -270,8 +281,16 @@ export function getEpisode(db: DB, id: number): EpisodeContext {
     localPath: r.local_path,
     title: { id: extra.t_id, name: extra.t_name, type: extra.t_type, thumbnail: extra.t_thumbnail },
     season: { id: extra.s_id, number: extra.s_number, name: extra.s_name },
-    nextEpisodeId: nextEpisodeId(db, extra.t_id, extra.s_number, r.position),
+    ...nextUp(db, extra.t_id, extra.s_number, r.position),
   };
+}
+
+/** The next episode of this title, or after its last one, the first of the next movie in its collection. */
+function nextUp(db: DB, titleId: number, seasonNumber: number, position: number): Pick<EpisodeContext, 'nextEpisodeId' | 'nextTitle'> {
+  const sameTitle = nextEpisodeId(db, titleId, seasonNumber, position);
+  if (sameTitle) return { nextEpisodeId: sameTitle, nextTitle: null };
+  const movie = nextMovie(db, titleId);
+  return movie ? { nextEpisodeId: movie.episodeId, nextTitle: { id: movie.titleId, name: movie.name } } : { nextEpisodeId: null, nextTitle: null };
 }
 
 export function nextEpisodeId(db: DB, titleId: number, seasonNumber: number, position: number): number | null {
@@ -331,8 +350,11 @@ export function continueWatching(db: DB, limit = 20): ContinueItem[] {
     )
     .all() as Row[];
   const latestPerTitle = rows.filter((r, i) => rows.findIndex((x) => x.title_id === r.title_id) === i);
+  // Titles the user has watched themselves: their own entry speaks for them, so a finished movie
+  // never offers a sequel that already has progress of its own.
+  const ownTitles = new Set(latestPerTitle.map((r) => r.title_id as number));
 
-  return latestPerTitle
+  const items = latestPerTitle
     .map((r) => getEpisode(db, r.id))
     .flatMap((ctx): ContinueItem[] => {
       const p = ctx.episode.progress;
@@ -340,9 +362,11 @@ export function continueWatching(db: DB, limit = 20): ContinueItem[] {
       if (!isFinished(p)) return [{ episode: ctx.episode, title: ctx.title, seasonNumber: ctx.season.number }];
       if (!ctx.nextEpisodeId) return [];
       const next = getEpisode(db, ctx.nextEpisodeId);
+      if (next.title.id !== ctx.title.id && ownTitles.has(next.title.id)) return [];
       return [{ episode: next.episode, title: next.title, seasonNumber: next.season.number }];
-    })
-    .slice(0, limit);
+    });
+  // One entry per title offered, the most recent first.
+  return items.filter((item, i) => items.findIndex((x) => x.title.id === item.title.id) === i).slice(0, limit);
 }
 
 /** Which episode "Play" should open for a title. */

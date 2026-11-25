@@ -157,6 +157,11 @@ function dropUnsafeValues(db: DB): void {
     UPDATE episodes SET thumbnail = NULL WHERE thumbnail IS NOT NULL AND NOT is_web_url(thumbnail);
     DELETE FROM progress WHERE episode_id NOT IN (SELECT id FROM episodes) OR NOT ${isNumber('seconds')}
       OR (duration IS NOT NULL AND NOT ${isNumber('duration')});
+    DELETE FROM collections WHERE typeof(name) <> 'text' OR trim(name) = '';
+    DELETE FROM collection_items WHERE collection_id NOT IN (SELECT id FROM collections)
+      OR title_id NOT IN (SELECT id FROM titles WHERE type = 'movie') OR NOT ${isNumber('position')};
+    DELETE FROM collection_items WHERE rowid NOT IN (SELECT MIN(rowid) FROM collection_items GROUP BY title_id);
+    DELETE FROM collections WHERE id NOT IN (SELECT collection_id FROM collection_items GROUP BY collection_id HAVING COUNT(*) >= 2);
   `);
 }
 

@@ -13,6 +13,7 @@ function describeMerge(s: ImportSummary): string {
     s.updatedTitles ? `adds to ${plural(s.updatedTitles, 'existing title')}` : null,
     s.addedEpisodes ? `${plural(s.addedEpisodes, 'new episode')} in all` : null,
     s.progressUpdated ? `updates watch progress for ${plural(s.progressUpdated, 'episode')}` : null,
+    s.collectionsAdded ? `adds or extends ${plural(s.collectionsAdded, 'collection')}` : null,
   ].filter(Boolean);
   if (!parts.length) return 'Nothing new: everything in this file is already in your catalog.';
   const text = parts.join(', ');
