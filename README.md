@@ -130,3 +130,20 @@ Quality, simultaneous downloads and auto-download do carry over.
 ```bash
 npm test
 ```
+
+## Releases
+
+The version shows in the small footer (for example `v0.3.0`). Between releases it reads
+`v0.3.0+2 · abc1234`, meaning 2 commits after v0.3.0, and adds `· edited` when there are
+uncommitted changes.
+
+To make a release, run these from `main` with everything committed:
+
+```bash
+npm run release -- minor     # or patch, major, or an exact version such as 1.0.0
+git push --follow-tags       # sends the release commit and its tag to GitHub
+npm run build                # so the running app shows the new version
+```
+
+Use `patch` for fixes, `minor` for new features and `major` for big changes. The full checklist
+(also for other AI assistants) is in [AGENTS.md](AGENTS.md).
